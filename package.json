@@ -1,0 +1,21 @@
+{
+  "name": "vue-options-to-composition",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^18.11.3",
+    "tsx": "^3.10.4"
+  },
+  "dependencies": {
+    "tree-sitter": "^0.20.0",
+    "tree-sitter-javascript": "^0.19.0",
+    "tree-sitter-typescript": "^0.20.1"
+  }
+}
