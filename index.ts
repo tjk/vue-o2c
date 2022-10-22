@@ -16,6 +16,8 @@ type State = {
   refs: Record<string, SyntaxNode>
   computeds: Record<string, string>
   useProps?: boolean
+  useSlots?: boolean
+  useAttrs?: boolean
 }
 
 function transform(vuePath: string) {
@@ -80,11 +82,17 @@ function transform(vuePath: string) {
 
   console.log(`<script setup lang="ts">`)
   const vueImportsUsed: string[] = []
+  if (state.useAttrs) {
+    vueImportsUsed.push("useAttrs")
+  }
   if (Object.keys(state.computeds).length) {
     vueImportsUsed.push("computed")
   }
   if (Object.keys(state.refs).length) {
     vueImportsUsed.push("ref")
+  }
+  if (state.useSlots) {
+    vueImportsUsed.push("useSlots")
   }
   if (vueImportsUsed.length) {
     for (const importNode of state.importNodes) {
@@ -122,6 +130,15 @@ function transform(vuePath: string) {
       console.log("})")
     } else {
       console.log("}>()")
+    }
+    console.log()
+  }
+  if (state.useAttrs || state.useSlots) {
+    if (state.useAttrs) {
+      console.log("const $attrs = useAttrs()")
+    }
+    if (state.useSlots) {
+      console.log("const $slots = useSlots()")
     }
     console.log()
   }
@@ -220,7 +237,7 @@ function handlePropType(n?: SyntaxNode): string {
   return ret
 }
 
-function handleProps(state: State, o: SyntaxNode) { // ObjectNode
+function handleProps(state: State, o: SyntaxNode, transformPass = true) { // ObjectNode
   handleObject(o, {
     onKeyValue(propName: string, n: SyntaxNode) {
       switch (n.type) {
@@ -262,39 +279,55 @@ function handleProps(state: State, o: SyntaxNode) { // ObjectNode
   })
 }
 
-// TODO make sure this always runs AFTER props get processed
-// TODO handle this.$slots, this.$attrs, etc.
 function transformBlock(state: State, s: string) {
-  return s.replace(/this\.\w+/g, (match) => {
+  return s.replace(/this\.[$\w]+/g, (match) => {
     const name = match.slice(5)
+    if (name === "$slots") {
+      state.useSlots = true
+      return `$slots`
+    } 
+    if (name === "$attrs") {
+      state.useAttrs = true
+      return `$attrs`
+    } 
     if (state.props[name]) {
       state.useProps = true
       return `props.${name}`
-    }
-    return `${name}.value` // XXX can this be a reactive?
+    } 
+    if (state.computeds[name] || state.refs[name]) {
+      return `${name}.value`
+    } 
+    assert(false, `this.${name} not transformed`)
+    // TODO:
+    // need to supply a config of how to get prototype -- eg:
+    // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
   })
 }
 
-function handleComputeds(state: State, n: SyntaxNode) {
+function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
       assert(false, key)
     },
     onMethod(meth: string, async: boolean, n: SyntaxNode) {
       assert(!async)
-      const computedString = transformBlock(state, n.text)
-      state.computeds[meth] = `() => ${reindent(computedString, 0)}`
+      if (transformPass) {
+        const computedString = transformBlock(state, n.text)
+        state.computeds[meth] = `() => ${reindent(computedString, 0)}`
+      } else {
+        state.computeds[meth] = "<discovered>"
+      }
     },
   })
 }
 
-function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode) {
+function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, transformPass = true) {
   switch (key) {
     case "components":
       // we don't need this now! but we should do better and remove/rewrite imports to use components.d.ts
       break
     case "computed":
-      handleComputeds(state, n)
+      handleComputeds(state, n, transformPass)
       break
     case "emits":
       // property_identifier : array
@@ -309,7 +342,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode) {
       break
     case "props":
       assert(n.type === "object", n.type)
-      handleProps(state, n)
+      handleProps(state, n, transformPass)
       break
     case "watch":
       // TODO
@@ -338,7 +371,7 @@ function handleDataMethod(state: State, n: SyntaxNode) { // StatementBlock
 
 }
 
-function handleDefaultExportMethod(state: State, meth: string, async: boolean, n: SyntaxNode) { // StatementBlock
+function handleDefaultExportMethod(state: State, meth: string, async: boolean, n: SyntaxNode, transformPass = true) { // StatementBlock
   switch (meth) {
     case "data":
       handleDataMethod(state, n)
@@ -397,7 +430,6 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
   }
 }
 
-// TODO pass in state so we can spit out final code at the end
 function maybeHandleDefaultExport(state: State, n: SyntaxNode): boolean {
   let defaultExport = false
   for (const c1 of n.children) {
@@ -406,13 +438,15 @@ function maybeHandleDefaultExport(state: State, n: SyntaxNode): boolean {
     }
     if (defaultExport && c1.type === "object") {
       // handle the default export here
+      let transformPass = false
       handleObject(c1, {
-        onKeyValue(key: string, n: SyntaxNode) {
-          handleDefaultExportKeyValue(state, key, n)
-        },
-        onMethod(meth: string, async: boolean, n: SyntaxNode) {
-          handleDefaultExportMethod(state, meth, async, n)
-        },
+        onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
+        onMethod: (meth: string, async: boolean, n: SyntaxNode) => handleDefaultExportMethod(state, meth, async, n, transformPass),
+      })
+      transformPass = true
+      handleObject(c1, {
+        onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
+        onMethod: (meth: string, async: boolean, n: SyntaxNode) => handleDefaultExportMethod(state, meth, async, n, transformPass),
       })
     }
   }
