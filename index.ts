@@ -6,13 +6,16 @@ import Parser, { SyntaxNode } from "tree-sitter"
 import { typescript } from "tree-sitter-typescript"
 import javascript from "tree-sitter-javascript"
 
+// TODO need to make sure stuff is ordered right (so we don't define thing above or below)
+
 type State = {
   importNodes: SyntaxNode[]
   emitsNode?: SyntaxNode // ArrayNode
   props: Record<string, string> // name -> type string
   propDefaultNodes: Record<string, string>
   refs: Record<string, SyntaxNode>
-  computeds: Record<string, SyntaxNode>
+  computeds: Record<string, string>
+  useProps?: boolean
 }
 
 function transform(vuePath: string) {
@@ -77,17 +80,19 @@ function transform(vuePath: string) {
 
   console.log(`<script setup lang="ts">`)
   const vueImportsUsed: string[] = []
+  if (Object.keys(state.computeds).length) {
+    vueImportsUsed.push("computed")
+  }
   if (Object.keys(state.refs).length) {
     vueImportsUsed.push("ref")
   }
-  // TODO
   if (vueImportsUsed.length) {
     for (const importNode of state.importNodes) {
       if (importNode.text.match(/'vue'/) || importNode.text.match(/"vue"/)) {
-        assert(false, "editing vue import not supported yet")
+        assert(false, "editing vue import not supported yet") // TODO
       }
     }
-    console.log(`import { ${vueImportsUsed.join(', ')} } from "vue"`) // TODO check how other imports are written
+    console.log(`import { ${vueImportsUsed.join(', ')} } from "vue"`) // TODO check how other imports are written (quotes)
   }
   for (const importNode of state.importNodes) {
     // TODO look if we already have a vue import and then add whichever features we use
@@ -96,12 +101,15 @@ function transform(vuePath: string) {
   if (state.importNodes.length) {
     console.log()
   }
-  // TODO if we need props. later (not just template) then set const props =
   if (Object.keys(state.props).length) {
+    let propsPrefix = ""
+    if (state.useProps) {
+      propsPrefix = "const props = "
+    }
     if (Object.keys(state.propDefaultNodes).length) {
-      console.log("withDefaults(defineProps<{")
+      console.log(`${propsPrefix}withDefaults(defineProps<{`)
     } else {
-      console.log("defineProps<{")
+      console.log(`${propsPrefix}defineProps<{`)
     }
     for (const k in state.props) {
       console.log(`  ${k}: ${state.props[k]}`)
@@ -123,11 +131,44 @@ function transform(vuePath: string) {
   }
   if (Object.keys(state.refs).length) {
     for (const k in state.refs) {
-      console.log(`const ${k} = ref(${state.refs[k].text})`) // TODO needs to be fixed
+      console.log(`const ${k} = ref(${state.refs[k].text})`)
+    }
+    console.log()
+  }
+  if (Object.keys(state.computeds).length) {
+    for (const k in state.computeds) {
+      console.log(`const ${k} = computed(${state.computeds[k]})`)
     }
     console.log()
   }
   console.log("</script>")
+}
+
+// just relative -- find smallest indent and then normalize it to numSpaces
+// TODO assumes space indent
+function reindent(s: string, minIndentSpaces: number) {
+  const lines = s.split("\n")
+  let minLineSpaces = Infinity
+  // assumes first line is inline (not indented)
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    const md = line.match(/^(\s*)/)
+    let lineSpaces = (md?.[1].length || 0)
+    if (lineSpaces < minLineSpaces) {
+      minLineSpaces = lineSpaces
+    }
+  }
+  const spaceIndentChange = minIndentSpaces - minLineSpaces
+  const ret: string[] = [lines[0]]
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (spaceIndentChange > 0) {
+      ret.push(" ".repeat(spaceIndentChange) + line)
+    } else {
+      ret.push(line.slice(-spaceIndentChange))
+    }
+  }
+  return ret.join("\n")
 }
 
 function propTypeIdentifierToType(s: string) {
@@ -207,8 +248,7 @@ function handleProps(state: State, o: SyntaxNode) { // ObjectNode
             },
             onMethod(meth: string, async: boolean, n: SyntaxNode) {
               assert(meth === "default", meth)
-              // TODO need to lint here, indentation will be broken
-              state.propDefaultNodes[propName] = `() => ${n.text}`
+              state.propDefaultNodes[propName] = `() => ${reindent(n.text, 2)}`
             },
           })
           break
@@ -222,10 +262,30 @@ function handleProps(state: State, o: SyntaxNode) { // ObjectNode
   })
 }
 
-// TODO heavy rewriting here!!
-// TODO this.x -> props.x or x.value in most cases
-function handleComputed(state: State, n: SyntaxNode) {
-  assert(false, n.type)
+// TODO make sure this always runs AFTER props get processed
+// TODO handle this.$slots, this.$attrs, etc.
+function transformBlock(state: State, s: string) {
+  return s.replace(/this\.\w+/g, (match) => {
+    const name = match.slice(5)
+    if (state.props[name]) {
+      state.useProps = true
+      return `props.${name}`
+    }
+    return `${name}.value` // XXX can this be a reactive?
+  })
+}
+
+function handleComputeds(state: State, n: SyntaxNode) {
+  handleObject(n, {
+    onKeyValue(key: string, n: SyntaxNode) {
+      assert(false, key)
+    },
+    onMethod(meth: string, async: boolean, n: SyntaxNode) {
+      assert(!async)
+      const computedString = transformBlock(state, n.text)
+      state.computeds[meth] = `() => ${reindent(computedString, 0)}`
+    },
+  })
 }
 
 function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode) {
@@ -234,7 +294,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode) {
       // we don't need this now! but we should do better and remove/rewrite imports to use components.d.ts
       break
     case "computed":
-      handleComputed(state, n)
+      handleComputeds(state, n)
       break
     case "emits":
       // property_identifier : array
@@ -262,17 +322,17 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode) {
 function handleDataMethod(state: State, n: SyntaxNode) { // StatementBlock
   for (const c of n.children) {
     if (c.type === "return_statement") {
+      assert(c.children.length === 2, "data method preamble not supported")
       assert(c.children[0].type === "return")
       assert(c.children[1].type === "object")
       handleObject(c.children[1], {
         onKeyValue(key: string, n: SyntaxNode) {
-          state.refs[key] = n
+          state.refs[key] = n // TODO check n is not something 'weird'?
         },
         onMethod(meth: string, async: boolean, n: SyntaxNode) {
           assert(false, meth)
         },
       })
-      console.log(c.children[1].children)
     }
   }
 
@@ -292,8 +352,8 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, n
 }
 
 type HandleObjectHooks = {
-  onKeyValue?: (name: string, n: SyntaxNode) => void
-  onMethod?: (name: string, async: boolean, n: SyntaxNode /* StatementBlock */) => void
+  onKeyValue?: (key: string, n: SyntaxNode) => void
+  onMethod?: (meth: string, async: boolean, n: SyntaxNode /* StatementBlock */) => void
 }
 
 function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectNode
