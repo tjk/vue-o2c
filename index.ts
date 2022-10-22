@@ -11,13 +11,23 @@ import javascript from "tree-sitter-javascript"
 type State = {
   importNodes: SyntaxNode[]
   emitsNode?: SyntaxNode // ArrayNode
+  hooks: {
+    onBeforeMount?: string
+  }
   props: Record<string, string> // name -> type string
   propDefaultNodes: Record<string, string>
   refs: Record<string, SyntaxNode>
   computeds: Record<string, string>
-  useProps?: boolean
-  useSlots?: boolean
-  useAttrs?: boolean
+  using: {
+    $attrs?: boolean
+    $emit?: boolean
+    $route?: boolean
+    $router?: boolean
+    $slots?: boolean
+    nextTick?: boolean
+    props?: boolean
+  }
+  nonRefs: Set<string>
 }
 
 function transform(vuePath: string) {
@@ -59,10 +69,13 @@ function transform(vuePath: string) {
 
   const state: State = {
     importNodes: [],
+    hooks: {},
     props: {},
     propDefaultNodes: {},
     refs: {},
     computeds: {},
+    using: {},
+    nonRefs: new Set(),
   }
 
   const tree = parser.parse(code)
@@ -82,16 +95,22 @@ function transform(vuePath: string) {
 
   console.log(`<script setup lang="ts">`)
   const vueImportsUsed: string[] = []
-  if (state.useAttrs) {
+  if (state.hooks.onBeforeMount) {
+    vueImportsUsed.push("onBeforeMount")
+  }
+  if (state.using.$attrs) {
     vueImportsUsed.push("useAttrs")
   }
   if (Object.keys(state.computeds).length) {
     vueImportsUsed.push("computed")
   }
+  if (state.using.nextTick) {
+    vueImportsUsed.push("nextTick")
+  }
   if (Object.keys(state.refs).length) {
     vueImportsUsed.push("ref")
   }
-  if (state.useSlots) {
+  if (state.using.$slots) {
     vueImportsUsed.push("useSlots")
   }
   if (vueImportsUsed.length) {
@@ -102,6 +121,21 @@ function transform(vuePath: string) {
     }
     console.log(`import { ${vueImportsUsed.join(', ')} } from "vue"`) // TODO check how other imports are written (quotes)
   }
+  const vueRouterImportsUsed: string[] = []
+  if (state.using.$router) {
+    vueRouterImportsUsed.push("useRouter")
+  }
+  if (state.using.$route) {
+    vueRouterImportsUsed.push("useRoute")
+  }
+  if (vueRouterImportsUsed.length) {
+    for (const importNode of state.importNodes) {
+      if (importNode.text.match(/'vue-router'/) || importNode.text.match(/"vue-router"/)) {
+        assert(false, "editing vue-router import not supported yet") // TODO
+      }
+    }
+    console.log(`import { ${vueRouterImportsUsed.join(', ')} } from "vue-router"`) // TODO check how other imports are written (quotes)
+  }
   for (const importNode of state.importNodes) {
     // TODO look if we already have a vue import and then add whichever features we use
     console.log(importNode.text) 
@@ -111,7 +145,7 @@ function transform(vuePath: string) {
   }
   if (Object.keys(state.props).length) {
     let propsPrefix = ""
-    if (state.useProps) {
+    if (state.using.props) {
       propsPrefix = "const props = "
     }
     if (Object.keys(state.propDefaultNodes).length) {
@@ -133,17 +167,24 @@ function transform(vuePath: string) {
     }
     console.log()
   }
-  if (state.useAttrs || state.useSlots) {
-    if (state.useAttrs) {
+  if (state.using.$attrs || state.using.$slots) {
+    if (state.using.$attrs) {
       console.log("const $attrs = useAttrs()")
     }
-    if (state.useSlots) {
+    if (state.using.$slots) {
       console.log("const $slots = useSlots()")
     }
     console.log()
   }
+  assert(!((state.emitsNode ? 1 : 0) ^ (state.using.$emit ? 1 : 0)))
   if (state.emitsNode) {
-    console.log(`defineEmits(${state.emitsNode.text})`)
+    console.log(`${state.using.$emit ? 'const $emit = ' : ''}defineEmits(${state.emitsNode.text})`)
+    console.log()
+  }
+  if (state.nonRefs.size) {
+    for (const k of state.nonRefs) {
+      console.log(`let ${k}`)
+    }
     console.log()
   }
   if (Object.keys(state.refs).length) {
@@ -152,13 +193,22 @@ function transform(vuePath: string) {
     }
     console.log()
   }
+  if (state.hooks.onBeforeMount) {
+    console.log(`onBeforeMount(${state.hooks.onBeforeMount})`)
+    console.log()
+  }
   if (Object.keys(state.computeds).length) {
     for (const k in state.computeds) {
       console.log(`const ${k} = computed(${state.computeds[k]})`)
     }
-    console.log()
+    console.log() // TODO don't put trailing after the last section -- might have to join the sections
   }
   console.log("</script>")
+
+  console.log()
+  console.log("------")
+  console.log()
+  console.log(state.nonRefs)
 }
 
 // just relative -- find smallest indent and then normalize it to numSpaces
@@ -247,7 +297,7 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
           break
         case "object":
           if (n.text === "{}") {
-            state.props[propName] = "any" // TODO tag
+            state.props[propName] = "any" // TODO tag to be fixed
             break
           }
           handleObject(n, {
@@ -282,25 +332,26 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
 function transformBlock(state: State, s: string) {
   return s.replace(/this\.[$\w]+/g, (match) => {
     const name = match.slice(5)
-    if (name === "$slots") {
-      state.useSlots = true
-      return `$slots`
-    } 
-    if (name === "$attrs") {
-      state.useAttrs = true
-      return `$attrs`
-    } 
+    if (name === "$nextTick") {
+      state.using.nextTick = true
+      return "nextTick"
+    }
+    if (["$emit", "$slots", "$attrs", "$router", "$route"].includes(name)) {
+      state.using[name] = true
+      return name
+    }
+    // TODO need to supply a config of how to get prototype -- eg:
+    // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
+    assert(!name.startsWith("$"), `config needed to determine how to replace global property: ${name}`)
     if (state.props[name]) {
-      state.useProps = true
+      state.using.props = true
       return `props.${name}`
     } 
     if (state.computeds[name] || state.refs[name]) {
       return `${name}.value`
-    } 
-    assert(false, `this.${name} not transformed`)
-    // TODO:
-    // need to supply a config of how to get prototype -- eg:
-    // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
+    }
+    state.nonRefs.add(name)
+    return name
   })
 }
 
@@ -377,9 +428,12 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, n
       handleDataMethod(state, n)
       break
     case "created":
-      // TODO EMIT onCreated or w.e
+      if (transformPass) {
+        state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, n.text), 0)}`
+      }
       break
     default:
+      // TODO other hooks destroyed, mounted, etc.
       assert(false, meth)
   }
 }
