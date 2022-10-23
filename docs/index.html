@@ -104,7 +104,7 @@ async function doTransform(sfc) {
       output.value = "Nothing transformed."
     }
   } catch (e) {
-    output.value = `Error: ${e.stack}`
+    output.value = e.stack
   }
 }
 
