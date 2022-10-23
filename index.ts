@@ -192,7 +192,7 @@ function transform(vuePath: string): State {
     injectionsSection += "const $slots = useSlots()\n"
   }
   if (state.nonRefs.size) {
-    injectionsSection += `const $this = {}`
+    injectionsSection += `const $this = {}\n`
   }
 
   let emitsSection = ""
