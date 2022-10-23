@@ -298,8 +298,6 @@ export function transform(state: State, parser: Parser) {
         assert(false, "cannot edit non-pug template to suport $el")
       }
     }
-  } else {
-    state.scan.templateStartIdx = undefined // no transformation needed so simplifies the output gen
   }
   for (const k in state.refs) {
     refsSection += `const ${k} = ref(${state.refs[k]})\n`
@@ -354,8 +352,7 @@ export function transform(state: State, parser: Parser) {
 
   // this can be simplified...
   let transformedSections: string[] = []
-  if (templateStartIdx != null) {
-    assert(template, "template not found but needed")
+  if (template) {
     if (templateStartIdx < scriptStartIdx) {
       transformedSections.push(...lines.slice(0, templateStartIdx + 1))
       transformedSections.push(template)
