@@ -43,6 +43,19 @@ export default {
     this.doIt();
     delete this.initializing // should not become `delete initializing` (so use $this)
   },
+  watch: {
+    watchMethod(v) {
+      console.log("watchMethod", v)
+    },
+    watchObject: {
+      deep: true,
+      immediate: true,
+      async handler(v, ov) {
+        console.log("watchObject", v, ov)
+      },
+    },
+
+  },
 };
 </script>
 
@@ -62,7 +75,7 @@ $ pnpm exec tsx index.ts ./example.vue
 
 Will output the following:
 
-```vue
+```vue pnpm exec tsx index.ts ./example.vue
 <template lang="pug">
 div(ref="$el")
   p Wonderful
@@ -89,6 +102,16 @@ onMounted(() => {
   delete $this.initializing // should not become `delete initializing` (so use $this)
 })
 
+const watchMethod = watch((v) => {
+  console.log("watchMethod", v)
+})
+const watchObject = watch(async (v, ov) => {
+  console.log("watchObject", v, ov)
+}, {
+  deep: true,
+  immediate: true,
+})
+
 function doIt() {
   console.log(`${props.greeting} ${name.value} ${$el.value.clientHeight}`);
 }
@@ -99,4 +122,5 @@ function doIt() {
   background: red;
 }
 </style>
+
 ```
