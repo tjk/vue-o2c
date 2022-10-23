@@ -30,6 +30,7 @@ type State = {
     props?: boolean
   }
   nonRefs: Set<string>
+  transformed?: string
 }
 
 function transform(vuePath: string) {
@@ -96,7 +97,7 @@ function transform(vuePath: string) {
   console.log("------")
   console.log()
 
-  console.log(`<script setup lang="ts">`)
+  let importSection = ""
   const vueImportsUsed: string[] = []
   if (state.hooks.onBeforeMount) {
     vueImportsUsed.push("onBeforeMount")
@@ -122,7 +123,8 @@ function transform(vuePath: string) {
         assert(false, "editing vue import not supported yet") // TODO
       }
     }
-    console.log(`import { ${vueImportsUsed.join(', ')} } from "vue"`) // TODO check how other imports are written (quotes)
+    // TODO check how other imports are written (quotes)
+    importSection += `import { ${vueImportsUsed.join(', ')} } from "vue"\n`
   }
   const vueRouterImportsUsed: string[] = []
   if (state.using.$router) {
@@ -137,96 +139,116 @@ function transform(vuePath: string) {
         assert(false, "editing vue-router import not supported yet") // TODO
       }
     }
-    console.log(`import { ${vueRouterImportsUsed.join(', ')} } from "vue-router"`) // TODO check how other imports are written (quotes)
+    // TODO check how other imports are written (quotes)
+    importSection += `import { ${vueRouterImportsUsed.join(', ')} } from "vue-router"\n`
   }
   for (const importNode of state.importNodes) {
     // TODO look if we already have a vue import and then add whichever features we use
-    console.log(importNode.text) 
+    importSection += `${importNode.text}\n`
   }
-  if (state.importNodes.length) {
-    console.log()
-  }
+
+  let propsSection = ""
   if (Object.keys(state.props).length) {
-    let propsPrefix = ""
     if (state.using.props) {
-      propsPrefix = "const props = "
+      propsSection += "const props = "
     }
     if (Object.keys(state.propDefaultNodes).length) {
-      console.log(`${propsPrefix}withDefaults(defineProps<{`)
-    } else {
-      console.log(`${propsPrefix}defineProps<{`)
+      propsSection += `withDefaults(`
     }
+    propsSection += `defineProps<{\n`
     for (const k in state.props) {
-      console.log(`  ${k}: ${state.props[k]}`)
+      propsSection += `  ${k}: ${state.props[k]}\n`
     }
+    propsSection += `}>()`
     if (Object.keys(state.propDefaultNodes).length) {
-      console.log("}>(), {")
+      propsSection += `, {\n`
       for (const k in state.propDefaultNodes) {
-        console.log(`  ${k}: ${state.propDefaultNodes[k]},`)
+        propsSection += `  ${k}: ${state.propDefaultNodes[k]},\n`
       }
-      console.log("})")
-    } else {
-      console.log("}>()")
+      propsSection += `})`
     }
-    console.log()
+    propsSection += "\n"
   }
-  // injections section (router, etc.)
-  if (state.using.$attrs || state.using.$slots || state.using.$route || state.using.$router) {
-    if (state.using.$attrs) {
-      console.log("const $attrs = useAttrs()")
-    }
-    if (state.using.$route) {
-      console.log("const $route = useRoute()")
-    }
-    if (state.using.$router) {
-      console.log("const $router = useRouter()")
-    }
-    if (state.using.$slots) {
-      console.log("const $slots = useSlots()")
-    }
-    console.log()
+
+  let injectionsSection = ""
+  if (state.using.$attrs) {
+    injectionsSection += "const $attrs = useAttrs()\n"
   }
+  if (state.using.$route) {
+    injectionsSection += "const $route = useRoute()\n"
+  }
+  if (state.using.$router) {
+    injectionsSection += "const $router = useRouter()\n"
+  }
+  if (state.using.$slots) {
+    injectionsSection += "const $slots = useSlots()\n"
+  }
+
+  let emitsSection = ""
   assert(!((state.emitsNode ? 1 : 0) ^ (state.using.$emit ? 1 : 0)))
-  if (state.emitsNode) {
-    console.log(`${state.using.$emit ? 'const $emit = ' : ''}defineEmits(${state.emitsNode.text})`)
-    console.log()
+  if (state.using.$emit) {
+    emitsSection += "const $emit = "
   }
+  if (state.emitsNode) {
+    emitsSection += `defineEmits(${state.emitsNode.text})\n`
+  }
+
+  let nonRefsSection = ""
   if (state.nonRefs.size) {
     for (const k of state.nonRefs) {
-      console.log(`let ${k}`)
+      nonRefsSection += `let ${k}\n`
     }
-    console.log()
   }
+
+  let refsSection = ""
   if (state.using.$el) {
     // TODO need to rewrite the template root (can we check if there is not a single root?? -- need pug tree-sitter)
-    console.log("const $el = ref<HTMLElement | undefined>()")
+    refsSection += "const $el = ref<HTMLElement | undefined>()\n"
   }
   if (Object.keys(state.refs).length) {
     for (const k in state.refs) {
-      console.log(`const ${k} = ref(${state.refs[k].text})`)
+      refsSection += `const ${k} = ref(${state.refs[k].text})\n`
     }
-    console.log()
   }
+
+  let hooksSection = ""
   if (state.hooks.onBeforeMount) {
-    console.log(`onBeforeMount(${state.hooks.onBeforeMount})`)
-    console.log()
+    hooksSection += `onBeforeMount(${state.hooks.onBeforeMount})\n`
   }
+
+  let computedsSection = ""
   if (Object.keys(state.computeds).length) {
     for (const k in state.computeds) {
-      console.log(`const ${k} = computed(${state.computeds[k]})`)
+      computedsSection += `const ${k} = computed(${state.computeds[k]})\n`
     }
-    console.log() // TODO don't put trailing after the last section -- might have to join the sections
   }
-  for (const k in state.methods) {
-    console.log(state.methods[k])
-    console.log()
-  }
-  console.log("</script>")
 
-  console.log()
-  console.log("------")
-  console.log()
-  console.log(state.nonRefs)
+  let watchesSection = ""
+  // TODO
+
+  let methodsSection = ""
+  for (const k in state.methods) {
+    methodsSection += `${state.methods[k]}\n`
+  }
+
+  const sections = [
+    importSection,
+    propsSection,
+    injectionsSection,
+    emitsSection,
+    nonRefsSection,
+    refsSection,
+    hooksSection,
+    computedsSection,
+    watchesSection,
+    methodsSection,
+  ].filter(Boolean)
+
+  state.transformed = `<script setup lang="ts">${sections.join("\n")}</script>`
+
+  console.log(state.transformed)
+
+  return state
 }
 
 // just relative -- find smallest indent and then normalize it to numSpaces
