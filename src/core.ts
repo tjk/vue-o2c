@@ -1,9 +1,10 @@
 import type { SyntaxNode, Tree } from "tree-sitter"
 
 // don't use stdlib so can be used in browser env
-function assert(v: any, msg: string) {
+function assert(v: any, msg: string, n?: SyntaxNode) {
   if (!v) {
-    throw new Error(`assertion failed: ${msg}`)
+    // TODO need class or something along state so we can add scriptStartIdx to row value
+    throw new Error(`assertion failed: ${msg}${n ? ` @ (${n.startPosition.row}, ${n.startPosition.column})` : ""}`)
   }
 }
 
@@ -135,7 +136,7 @@ export function transform(state: State, parser: Parser) {
         continue
       }
     } else {
-      assert(false, `need to write out non import/export statement: ${n.type}`)
+      assert(false, `need to write out non import/export statement: ${n.type}`, n)
     }
   }
 
@@ -448,7 +449,7 @@ function handlePropType(n?: SyntaxNode): string {
   } else if (n?.type === "identifier") {
     ret = propTypeIdentifierToType(n.text)
   } else {
-    assert(false, `prop value type not array or identifier: ${n?.text}`)
+    assert(false, `prop value type not array or identifier: ${n?.text}`, n)
   }
   // TODO tag these to be touched up after
   // if (ret.match(/any/)) {
@@ -480,22 +481,22 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
                   state.props[propName] = handlePropType(n) // TODO do not assume this node is identifier
                   break
                 default:
-                  assert(false, `prop attribute not handled: ${key}`)
+                  assert(false, `prop attribute not handled: ${key}`, n)
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-              assert(meth === "default", `prop attribute method not named default: ${meth}`)
-              assert(args.text === "()", `prop attribute method default has unexpected args: ${args.text}`)
+              assert(meth === "default", `prop attribute method not named default: ${meth}`, n)
+              assert(args.text === "()", `prop attribute method default has unexpected args: ${args.text}`, args)
               state.propDefaultNodes[propName] = `() => ${reindent(block.text, 2)}`
             },
           })
           break
         default:
-          assert(false, `prop value not identifier or object: ${n.children[2].type}`)
+          assert(false, `prop value not identifier or object: ${n.children[2].type}`, n.children[2])
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-      assert(false, `unexpected prop method: ${meth}`)
+      assert(false, `unexpected prop method: ${meth}`, o) // XXX wrong syntax node here
     },
   })
 }
@@ -537,13 +538,13 @@ function transformBlock(state: State, s: string) {
 function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      assert(false, `computed non-method key unexpected: ${key}`)
+      assert(false, `computed non-method key unexpected: ${key}`, n)
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-      assert(!async, "computed async method unexpected")
+      assert(!async, "computed async method unexpected", block) // XXX wrong syntax node
       if (transformPass) {
         const computedString = transformBlock(state, block.text)
-        assert(args.text === "()", `computed method has unexpected args: ${args.text}`)
+        assert(args.text === "()", `computed method has unexpected args: ${args.text}`, args)
         state.computeds[meth] = `() => ${reindent(computedString, 0)}`
       } else {
         state.computeds[meth] = DISCOVERED
@@ -555,7 +556,7 @@ function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
 function handleMethods(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      assert(false, `methods has non-method: ${key}`)
+      assert(false, `methods has non-method: ${key}`, n)
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       if (transformPass) {
@@ -590,7 +591,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
                   watch.immediate = n.text
                   break
                 default:
-                  assert(false, `unexpected watch value attribute: ${key}`)
+                  assert(false, `unexpected watch value attribute: ${key}`, n)
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
@@ -600,7 +601,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
           state.watchers[key] = watch
           break
         default:
-          assert(false, `unexpected watch value type (not method or object): ${n.type}`)
+          assert(false, `unexpected watch value type (not method or object): ${n.type}`, n)
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
@@ -621,7 +622,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       break
     case "emits":
       // property_identifier : array
-      assert(n.type === "array", `expected emits to be an array: ${n.type}`)
+      assert(n.type === "array", `expected emits to be an array: ${n.type}`, n)
       state.emitsNode = n
       break
     case "methods":
@@ -631,14 +632,14 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       // do nothing with this...
       break
     case "props":
-      assert(n.type === "object", `expected props to be an object: ${n.type}`)
+      assert(n.type === "object", `expected props to be an object: ${n.type}`, n)
       handleProps(state, n, transformPass)
       break
     case "watch":
       handleWatchers(state, n, transformPass)
       break
     default:
-      assert(false, `export default key not supported: ${key}`)
+      assert(false, `export default key not supported: ${key}`, n)
   }
 }
 
@@ -660,7 +661,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
     // TODO $data.test (and in template need to rewrite too!!!) UGH
     if (c.type === "return_statement") {
       // if matches this, just do the simple version
-      assert(c.children[1].type === "object", "only simple data() object return supported")
+      assert(c.children[1].type === "object", "only simple data() object return supported", c.children[1])
       handleObject(c.children[1], {
         onKeyValue(key: string, n: SyntaxNode) {
           if (transformPass) {
@@ -670,7 +671,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
           }
         },
         onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-          assert(false, `data() return object method key not supported: ${meth}`)
+          assert(false, `data() return object method key not supported: ${meth}`, block) // XXX wrong syntax node
         },
       })
     }
@@ -684,19 +685,19 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
       break
     case "created":
       if (transformPass) {
-        assert(args.text === "()", `created hook method has unexpected args: ${args.text}`)
+        assert(args.text === "()", `created hook method has unexpected args: ${args.text}`, args)
         state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
       }
       break
     case "mounted":
       if (transformPass) {
-        assert(args.text === "()", `mounted hook method has unexpected args: ${args.text}`)
+        assert(args.text === "()", `mounted hook method has unexpected args: ${args.text}`, args)
         state.hooks.onMounted = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
       }
       break
     default:
       // TODO other hooks destroyed, etc.
-      assert(false, `export default key not supported: ${meth}`)
+      assert(false, `export default key not supported: ${meth}`, block) // XXX wrong syntax node
   }
 }
 
@@ -708,9 +709,9 @@ type HandleObjectHooks = {
 function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectNode
   for (const c of object.children) {
     if (c.type === "pair") {
-      assert(c.children[0]?.type === "property_identifier", `pair[0] not property_identifer: ${c.children[0].type}`)
-      assert(c.children[1]?.type === ":", `pair[1] not ":": ${c.children[1].type}`)
-      assert(c.children[2], "pair has no 3nd child")
+      assert(c.children[0]?.type === "property_identifier", `pair[0] not property_identifer: ${c.children[0].type}`, c.children[0])
+      assert(c.children[1]?.type === ":", `pair[1] not ":": ${c.children[1].type}`, c.children[1])
+      assert(c.children[2], "pair has no 3nd child", c)
       hooks.onKeyValue?.(c.children[0].text, c.children[2])
     } else if (c.type === "method_definition") {
       let meth: string | undefined
@@ -732,17 +733,17 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
             args = n
             break
           default:
-            assert(false, `unhandled method_definition structure, found: ${n.type}`)
+            assert(false, `unhandled method_definition structure, found: ${n.type}`, n)
         }
       }
-      assert(meth && args && block, "did not find required nodes for method_definition") 
+      assert(meth && args && block, "did not find required nodes for method_definition", c) 
       hooks.onMethod?.(meth, async, args, block)
     } else if (c.type === "comment") {
       // TODO preserve these -- onComment
     } else if (c.type === "{" || c.type === "," || c.type === "}") {
       // do nothing
     } else {
-      assert(false, `unexpected node found while parsing object: ${c.type}`)
+      assert(false, `unexpected node found while parsing object: ${c.type}`, c)
     }
   }
 }
