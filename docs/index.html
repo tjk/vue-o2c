@@ -5,16 +5,17 @@
 * {box-sizing:border-box;margin:0;padding:0}
     </style>
   </head>
-  <body style="height:100%">
-    <div style="height:100%;display:flex">
+  <body style="padding:10px;height:100%">
+    <h1>vue-o2c (see on <a href="https://github.com/tjk/vue-o2c">GitHub</a>)</h1>
+    <div style="height:100%;display:flex;column-gap:10px;">
       <div style="flex:1 1 0%">
-        <div style="height:100%;padding:10px">
+        <div style="height:100%">
           <h2>Input</h2>
           <textarea id="input" style="width:100%;height:100%"></textarea>
         </div>
       </div>
       <div style="flex:1 1 0%">
-        <div style="height:100%;padding:10px">
+        <div style="height:100%">
           <h2>Output</h2>
           <textarea id="output" style="width:100%;height:100%"></textarea>
         </div>
@@ -33,8 +34,8 @@ export default async function transform(sfc) {
   await Parser.init()
   const parser = new Parser()
   parser.setLanguage(await Parser.Language.load(state.scan.scriptTs 
-    ? "/tree-sitter-typescript.wasm"
-    : "/tree-sitter-javascript.wasm"
+    ? "./tree-sitter-typescript.wasm"
+    : "./tree-sitter-javascript.wasm"
   ))
   _transform(state, parser)
   return state
@@ -93,12 +94,26 @@ export default {
 </style>`.replace("%end-script%", "</scri" + "pt>") // otherwise breaks html
 input.value = initialInputValue
 
-input.addEventListener("input", async e => {
+async function doTransform(sfc) {
   output.value = "Transforming..."
-  const state = await transform(e.target.value)
-  if (state.transformed) {
-    output.value = state.transformed
+  try {
+    const state = await transform(sfc)
+    if (state.transformed) {
+      output.value = state.transformed
+    } else {
+      output.value = "Nothing transformed."
+    }
+  } catch (e) {
+    output.value = `Error: ${e.stack}`
   }
+}
+
+;(async function() {
+  await doTransform(input.value)
+})()
+
+input.addEventListener("input", async e => {
+  await doTransform(e.target.value)
 })
     </script>
   </body>

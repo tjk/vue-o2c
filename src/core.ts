@@ -3,7 +3,7 @@ import type { SyntaxNode, Tree } from "tree-sitter"
 // don't use stdlib so can be used in browser env
 function assert(v: any, msg?: string) {
   if (!v) {
-    throw new Error(`assertion failed: ${msg || v.toString()}`)
+    throw new Error(`assertion failed: ${msg || v}`)
   }
 }
 
