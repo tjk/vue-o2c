@@ -1,10 +1,9 @@
 {
-  "name": "vo2c",
+  "name": "vue-o2c",
   "version": "0.0.1",
   "description": "Vue Options API to Composition API converter",
   "main": "dist/index.js",
-  "scripts": {
-  },
+  "scripts": {},
   "keywords": [],
   "author": "TJ Koblentz",
   "license": "MIT",
@@ -16,5 +15,13 @@
     "tree-sitter": "^0.20.0",
     "tree-sitter-javascript": "^0.19.0",
     "tree-sitter-typescript": "^0.20.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tjk/vue-o2c.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tjk/vue-o2c/issues"
+  },
+  "homepage": "https://github.com/tjk/vue-o2c#readme"
 }

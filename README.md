@@ -1,4 +1,4 @@
-# vo2c - Vue Options API to Composition API
+# vue-o2c - Vue Options API to Composition API
 
 **WORK IN PROGRESS** -- the following is not done:
 
@@ -39,8 +39,8 @@ export default {
 ```
 
 ```bash
-$ git clone git@github.com:tjk/vo2c.git
-$ cd vo2c
+$ git clone git@github.com:tjk/vue-o2c.git
+$ cd vue-o2c
 $ pnpm i
 $ pnpm exec tsx index.ts ./example.vue
 ```
