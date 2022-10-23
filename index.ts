@@ -97,21 +97,10 @@ function transform(sfc: string): State {
   }
 
   const parser = new Parser()
-  if (ts) {
-    parser.setLanguage(typescript)
-  } else {
-    parser.setLanguage(javascript)
-  }
-
+  parser.setLanguage(ts ? typescript : javascript)
   // XXX handle if js is after start tag or before end tag but no one does this
   const script = lines.slice(scriptStartIdx + 1, scriptEndIdx).join("\n")
   const tree = parser.parse(script)
-
-  let template: string | undefined
-  if (templateStartIdx != null) {
-    // XXX handle if template is after start tag or before end tag but no one does this
-    template = lines.slice(templateStartIdx + 1, templateEndIdx).join("\n")
-  }
 
   // write out everything that is not the export statement node
   for (const n of tree.rootNode.children) {
@@ -227,9 +216,64 @@ function transform(sfc: string): State {
   }
 
   let refsSection = ""
+  let template: string | undefined
   if (state.using.$el) {
-    // TODO need to rewrite the template root (can we check if there is not a single root?? -- need pug tree-sitter)
     refsSection += "const $el = ref<HTMLElement | undefined>()\n"
+    if (templateStartIdx != null) {
+      // XXX handle if template is after start tag or before end tag but no one does this
+      template = lines.slice(templateStartIdx + 1, templateEndIdx).join("\n")
+      // TODO find the first tag and rewrite it such that we inject the attribute ref="$el"
+      // if we do not find one root node we should error and fail
+      if (pug) {
+        const templateLines = template.split("\n")
+        // if multiple non-comment lines have 0 indent we have a problem
+        // if only 0 indent line is not an html tag we have a problem
+        let zeroIndentIdx: number | undefined
+        for (let i = 0; i < templateLines.length; i++) {
+          const line = templateLines[i]
+          if (line.startsWith("//")) {
+            continue
+          }
+          const lineSpaces = linePrefixSpaces(line)
+          if (!lineSpaces) {
+            assert(zeroIndentIdx == null)
+            zeroIndentIdx = i
+          }
+        }
+        assert(zeroIndentIdx != null)
+        // can be .some-class, #some-id, div
+        const zeroIndentLine = templateLines[zeroIndentIdx]
+        // html tag should just be all lower case
+        if (zeroIndentLine.startsWith(".") || zeroIndentLine.startsWith("#") || zeroIndentLine.match(/^[a-z]+([.#(\s]|$)/)) {
+          let newLine: string
+          let idx = zeroIndentLine.indexOf("(")
+          const zeroIndentChars = zeroIndentLine.split("")
+          if (idx >= 0) {
+            const suffix = (zeroIndentLine[idx + 1] && zeroIndentLine[idx + 1] !== ")") ? " " : ""
+            zeroIndentChars.splice(idx + 1, 0, `ref="$el"${suffix}`)
+            newLine = zeroIndentChars.join("")
+          } else {
+            idx = zeroIndentLine.indexOf(" ")
+            if (idx >= 0) {
+              zeroIndentChars.splice(idx + 1, 0, `(ref="$el")`)
+              newLine = zeroIndentChars.join("")
+            } else {
+              idx = zeroIndentLine.length
+              newLine = zeroIndentLine + `(ref="$el")`
+            }
+          }
+          templateLines[zeroIndentIdx] = newLine
+          template = templateLines.join("\n")
+        } else {
+          assert(false, "cannot edit pug template to suport $el")
+        }
+      } else {
+        // probably need tree-sitter html?
+        assert(false, "cannot edit html template to suport $el")
+      }
+    }
+  } else {
+    templateStartIdx = undefined // no transformation needed
   }
   if (Object.keys(state.refs).length) {
     for (const k in state.refs) {
@@ -272,14 +316,14 @@ function transform(sfc: string): State {
     methodsSection,
   ].filter(Boolean)
 
+  // this can be simplified...
   let transformedSections: string[] = []
-
   if (templateStartIdx != null) {
     assert(template)
     if (templateStartIdx < scriptStartIdx) {
       transformedSections.push(...lines.slice(0, templateStartIdx + 1))
       transformedSections.push(template)
-      transformedSections.push(...lines.slice(templateStartIdx, scriptStartIdx))
+      transformedSections.push(...lines.slice(templateEndIdx, scriptStartIdx))
       transformedSections.push(`<script setup lang="ts">\n${sections.join("\n")}</script>`)
       transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
     } else {
@@ -297,21 +341,26 @@ function transform(sfc: string): State {
 
   state.transformed = transformedSections.join("\n")
 
+  // only do this if not being used programmatically
   console.log(state.transformed)
 
   return state
 }
 
-// just relative -- find smallest indent and then normalize it to numSpaces
+function linePrefixSpaces(line: string): number {
+  const md = line.match(/^(\s*)/)
+  return (md?.[1].length || 0)
+}
+
+// just relative -- find smallest indent and then normalize it
 // TODO assumes space indent
 function reindent(s: string, minIndentSpaces: number) {
   const lines = s.split("\n")
   let minLineSpaces = Infinity
-  // assumes first line is inline (not indented)
+  // TODO assumes first line is inline (not indented)
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]
-    const md = line.match(/^(\s*)/)
-    let lineSpaces = (md?.[1].length || 0)
+    const lineSpaces = linePrefixSpaces(line)
     if (lineSpaces < minLineSpaces) {
       minLineSpaces = lineSpaces
     }
