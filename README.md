@@ -1,5 +1,15 @@
 # vo2c - Vue Options API to Composition API
 
+**WORK IN PROGRESS** -- the following is not done:
+
+- bunch of stuff not implemented (including watchers)
+- $el needs to try to rewrite part of template
+- would like to maintain indentation, quoting, and semicolon rules
+
+Working through stuff case by case
+
+## Example
+
 Given the following file:
 
 ```vue
