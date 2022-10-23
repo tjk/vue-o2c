@@ -4,5 +4,5 @@
     "declaration": true,
     "esModuleInterop": true
   },
-  "include": ["index.ts", "cli.ts"]
+  "include": ["src/index.ts", "src/cli.ts"]
 }
