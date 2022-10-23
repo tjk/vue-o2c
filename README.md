@@ -10,6 +10,32 @@
 - $el needs to try to rewrite part of template
 - would like to maintain indentation, quoting, and semicolon rules
 
+## Usage
+
+### via CLI
+
+*This is not working due to a publishing issue I need to fix...*
+
+```bash
+$ npx vue-o2c /path/to/sfc.vue
+```
+
+### Programmatically
+
+```bash
+$ pnpm add vue-o2c
+```
+
+*Please keep in mind, API is very experimental and likely will change!*
+
+```typescript
+import { transformPath, transform, type State } from "vue-o2c"
+
+const s1: State = transformPath("/path/to/sfc.vue")
+const s2: State = transform("<script>\nexport default {\n  props: {\n    a: String,\n  }\n}\n</script>")
+// s1.transformed and s2.transformed will both contained transformed code
+```
+
 ## Example
 
 Given the following file:
