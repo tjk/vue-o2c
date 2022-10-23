@@ -1,9 +1,9 @@
 import type { SyntaxNode, Tree } from "tree-sitter"
 
 // don't use stdlib so can be used in browser env
-function assert(v: any, msg?: string) {
+function assert(v: any, msg: string) {
   if (!v) {
-    throw new Error(`assertion failed: ${msg || v}`)
+    throw new Error(`assertion failed: ${msg}`)
   }
 }
 
@@ -124,7 +124,7 @@ export function transform(state: State, parser: Parser) {
     templatePug,
   } = state.scan
 
-  assert(script)
+  assert(script, "no options api script scanned")
   const tree = parser.parse(script)
 
   for (const n of tree.rootNode.children) {
@@ -135,7 +135,7 @@ export function transform(state: State, parser: Parser) {
         continue
       }
     } else {
-      assert(false, "need to write out non import/export statement: n.type")
+      assert(false, `need to write out non import/export statement: ${n.type}`)
     }
   }
 
@@ -165,7 +165,7 @@ export function transform(state: State, parser: Parser) {
   if (vueImportsUsed.length) {
     for (const importNode of state.importNodes) {
       if (importNode.text.match(/'vue'/) || importNode.text.match(/"vue"/)) {
-        assert(false, "editing vue import not supported yet") // TODO
+        assert(false, "editing existing vue import not supported yet") // TODO
       }
     }
     // TODO check how other imports are written (quotes)
@@ -181,7 +181,7 @@ export function transform(state: State, parser: Parser) {
   if (vueRouterImportsUsed.length) {
     for (const importNode of state.importNodes) {
       if (importNode.text.match(/'vue-router'/) || importNode.text.match(/"vue-router"/)) {
-        assert(false, "editing vue-router import not supported yet") // TODO
+        assert(false, "editing existing vue-router import not supported yet") // TODO
       }
     }
     // TODO check how other imports are written (quotes)
@@ -233,7 +233,7 @@ export function transform(state: State, parser: Parser) {
   }
 
   let emitsSection = ""
-  assert(!((state.emitsNode ? 1 : 0) ^ (state.using.$emit ? 1 : 0)))
+  assert(!((state.emitsNode ? 1 : 0) ^ (state.using.$emit ? 1 : 0)), "specifies emits but doesn't or vice versa")
   if (state.using.$emit) {
     emitsSection += "const $emit = "
   }
@@ -262,11 +262,11 @@ export function transform(state: State, parser: Parser) {
           }
           const lineSpaces = linePrefixSpaces(line)
           if (!lineSpaces) {
-            assert(zeroIndentIdx == null)
+            assert(zeroIndentIdx == null, "multiple zero-space indents found in pug template")
             zeroIndentIdx = i
           }
         }
-        assert(zeroIndentIdx != null)
+        assert(zeroIndentIdx != null, "no zero-space indent found in pug template")
         // can be .some-class, #some-id, div
         const zeroIndentLine = templateLines[zeroIndentIdx]
         // html tag should just be all lower case
@@ -295,7 +295,7 @@ export function transform(state: State, parser: Parser) {
         }
       } else {
         // probably need tree-sitter html?
-        assert(false, "cannot edit html template to suport $el")
+        assert(false, "cannot edit non-pug template to suport $el")
       }
     }
   } else {
@@ -355,7 +355,7 @@ export function transform(state: State, parser: Parser) {
   // this can be simplified...
   let transformedSections: string[] = []
   if (templateStartIdx != null) {
-    assert(template)
+    assert(template, "template not found but needed")
     if (templateStartIdx < scriptStartIdx) {
       transformedSections.push(...lines.slice(0, templateStartIdx + 1))
       transformedSections.push(template)
@@ -451,7 +451,7 @@ function handlePropType(n?: SyntaxNode): string {
   } else if (n?.type === "identifier") {
     ret = propTypeIdentifierToType(n.text)
   } else {
-    assert(false, n?.text)
+    assert(false, `prop value type not array or identifier: ${n?.text}`)
   }
   // TODO tag these to be touched up after
   // if (ret.match(/any/)) {
@@ -483,22 +483,22 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
                   state.props[propName] = handlePropType(n) // TODO do not assume this node is identifier
                   break
                 default:
-                  assert(false, key)
+                  assert(false, `prop attribute not handled: ${key}`)
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-              assert(meth === "default", meth)
-              assert(args.text === "()")
+              assert(meth === "default", `prop attribute method not named default: ${meth}`)
+              assert(args.text === "()", `prop attribute method default has unexpected args: ${args.text}`)
               state.propDefaultNodes[propName] = `() => ${reindent(block.text, 2)}`
             },
           })
           break
         default:
-          assert(false, n.children[2].type)
+          assert(false, `prop value not identifier or object: ${n.children[2].type}`)
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-      assert(false, meth)
+      assert(false, `unexpected prop method: ${meth}`)
     },
   })
 }
@@ -540,13 +540,13 @@ function transformBlock(state: State, s: string) {
 function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      assert(false, key)
+      assert(false, `computed non-method key unexpected: ${key}`)
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-      assert(!async)
+      assert(!async, "computed async method unexpected")
       if (transformPass) {
         const computedString = transformBlock(state, block.text)
-        assert(args.text === "()")
+        assert(args.text === "()", `computed method has unexpected args: ${args.text}`)
         state.computeds[meth] = `() => ${reindent(computedString, 0)}`
       } else {
         state.computeds[meth] = DISCOVERED
@@ -558,7 +558,7 @@ function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
 function handleMethods(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      assert(false, key)
+      assert(false, `methods has non-method: ${key}`)
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       if (transformPass) {
@@ -593,7 +593,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
                   watch.immediate = n.text
                   break
                 default:
-                  assert(false, key)
+                  assert(false, `unexpected watch value attribute: ${key}`)
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
@@ -603,7 +603,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
           state.watchers[key] = watch
           break
         default:
-          assert(false, n.type)
+          assert(false, `unexpected watch value type (not method or object): ${n.type}`)
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
@@ -624,7 +624,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       break
     case "emits":
       // property_identifier : array
-      assert(n.type === "array", n.type)
+      assert(n.type === "array", `expected emits to be an array: ${n.type}`)
       state.emitsNode = n
       break
     case "methods":
@@ -634,7 +634,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       // do nothing with this...
       break
     case "props":
-      assert(n.type === "object", n.type)
+      assert(n.type === "object", `expected props to be an object: ${n.type}`)
       handleProps(state, n, transformPass)
       break
     case "watch":
@@ -663,8 +663,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
     // TODO $data.test (and in template need to rewrite too!!!) UGH
     if (c.type === "return_statement") {
       // if matches this, just do the simple version
-      assert(c.children[0].type === "return")
-      assert(c.children[1].type === "object")
+      assert(c.children[1].type === "object", "only simple data() object return supported")
       handleObject(c.children[1], {
         onKeyValue(key: string, n: SyntaxNode) {
           if (transformPass) {
@@ -674,7 +673,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
           }
         },
         onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-          assert(false, `data() return method not supported: ${meth}`)
+          assert(false, `data() return object method key not supported: ${meth}`)
         },
       })
     }
@@ -688,13 +687,13 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
       break
     case "created":
       if (transformPass) {
-        assert(args.text === "()")
+        assert(args.text === "()", `created hook method has unexpected args: ${args.text}`)
         state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
       }
       break
     case "mounted":
       if (transformPass) {
-        assert(args.text === "()")
+        assert(args.text === "()", `mounted hook method has unexpected args: ${args.text}`)
         state.hooks.onMounted = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
       }
       break
@@ -712,9 +711,9 @@ type HandleObjectHooks = {
 function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectNode
   for (const c of object.children) {
     if (c.type === "pair") {
-      assert(c.children[0]?.type === "property_identifier", c.children[0].type)
-      assert(c.children[1]?.type === ":", c.children[1].type)
-      assert(c.children[2])
+      assert(c.children[0]?.type === "property_identifier", `pair[0] not property_identifer: ${c.children[0].type}`)
+      assert(c.children[1]?.type === ":", `pair[1] not ":": ${c.children[1].type}`)
+      assert(c.children[2], "pair has no 3nd child")
       hooks.onKeyValue?.(c.children[0].text, c.children[2])
     } else if (c.type === "method_definition") {
       let meth: string | undefined
@@ -736,17 +735,17 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
             args = n
             break
           default:
-            assert(false, n.type)
+            assert(false, `unhandled method_definition structure, found: ${n.type}`)
         }
       }
-      assert(meth && args && block) 
+      assert(meth && args && block, "did not find required nodes for method_definition") 
       hooks.onMethod?.(meth, async, args, block)
     } else if (c.type === "comment") {
       // TODO preserve these -- onComment
     } else if (c.type === "{" || c.type === "," || c.type === "}") {
       // do nothing
     } else {
-      assert(false, c.text)
+      assert(false, `unexpected node found while parsing object: ${c.type}`)
     }
   }
 }
