@@ -26,6 +26,19 @@ export default {
     this.doIt();
     delete this.initializing // should not become `delete initializing` (so use $this)
   },
+  watch: {
+    watchMethod(v) {
+      console.log("watchMethod", v)
+    },
+    watchObject: {
+      deep: true,
+      immediate: true,
+      async handler(v, ov) {
+        console.log("watchObject", v, ov)
+      },
+    },
+
+  },
 };
 </script>
 

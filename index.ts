@@ -619,7 +619,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       handleWatchers(state, n, transformPass)
       break
     default:
-      assert(false, key)
+      assert(false, `export default key not supported: ${key}`)
   }
 }
 
@@ -650,7 +650,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
           }
         },
         onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-          assert(false, meth)
+          assert(false, `data() return method not supported: ${meth}`)
         },
       })
     }
@@ -675,8 +675,8 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
       }
       break
     default:
-      // TODO other hooks destroyed, mounted, etc.
-      assert(false, meth)
+      // TODO other hooks destroyed, etc.
+      assert(false, `export default key not supported: ${meth}`)
   }
 }
 

@@ -2,7 +2,7 @@
 
 **WORK IN PROGRESS** -- the following is not done:
 
-- bunch of stuff not implemented (including watchers)
+- bunch of stuff still not implemented (working through case by case)
 - publish package correctly (pretty important)
 - data() preamble -- if there is premable maybe just create refs then use the function to set them
 - handle setup() in options api
@@ -10,13 +10,11 @@
 - $el needs to try to rewrite part of template
 - would like to maintain indentation, quoting, and semicolon rules
 
-Working through stuff case by case
-
 ## Example
 
 Given the following file:
 
-```vue
+```vue cat example.vue
 <template lang="pug">
 div
   p Wonderful
