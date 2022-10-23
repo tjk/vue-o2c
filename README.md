@@ -1,8 +1,6 @@
-# Vue Options API to Composition API
+# vo2c - Vue Options API to Composition API
 
-## Examples
-
-### blog-1 (https://markus.oberlehner.net/blog/vue-3-composition-api-vs-options-api/)
+Given the following file:
 
 ```vue
 <script>
@@ -24,6 +22,12 @@ export default {
 };
 </script>
 ```
+
+```bash
+$ npx tsx vo2c examples/blog-1/options.vue
+```
+
+Will output the following:
 
 ```vue
 <script setup lang="ts">

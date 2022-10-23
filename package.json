@@ -1,14 +1,13 @@
 {
-  "name": "vue-options-to-composition",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "vo2c",
+  "version": "0.0.1",
+  "description": "Vue Options API to Composition API converter",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "TJ Koblentz",
+  "license": "MIT",
   "devDependencies": {
     "@types/node": "^18.11.3",
     "tsx": "^3.10.4"
