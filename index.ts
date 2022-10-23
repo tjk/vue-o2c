@@ -13,6 +13,7 @@ type State = {
   emitsNode?: SyntaxNode // ArrayNode
   hooks: {
     onBeforeMount?: string
+    onMounted?: string
   }
   props: Record<string, string> // name -> type string
   propDefaultNodes: Record<string, string>
@@ -101,6 +102,9 @@ function transform(vuePath: string) {
   const vueImportsUsed: string[] = []
   if (state.hooks.onBeforeMount) {
     vueImportsUsed.push("onBeforeMount")
+  }
+  if (state.hooks.onMounted) {
+    vueImportsUsed.push("onMounted")
   }
   if (state.using.$attrs) {
     vueImportsUsed.push("useAttrs")
@@ -215,6 +219,9 @@ function transform(vuePath: string) {
   if (state.hooks.onBeforeMount) {
     hooksSection += `onBeforeMount(${state.hooks.onBeforeMount})\n`
   }
+  if (state.hooks.onMounted) {
+    hooksSection += `onMounted(${state.hooks.onMounted})\n`
+  }
 
   let computedsSection = ""
   if (Object.keys(state.computeds).length) {
@@ -244,7 +251,7 @@ function transform(vuePath: string) {
     methodsSection,
   ].filter(Boolean)
 
-  state.transformed = `<script setup lang="ts">${sections.join("\n")}</script>`
+  state.transformed = `<script setup lang="ts">\n${sections.join("\n")}</script>`
 
   console.log(state.transformed)
 
@@ -471,7 +478,6 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
 function handleDataMethod(state: State, n: SyntaxNode) { // StatementBlock
   for (const c of n.children) {
     if (c.type === "return_statement") {
-      assert(c.children.length === 2, "data method preamble not supported")
       assert(c.children[0].type === "return")
       assert(c.children[1].type === "object")
       handleObject(c.children[1], {
@@ -496,6 +502,12 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
       if (transformPass) {
         assert(args.text === "()")
         state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
+      }
+      break
+    case "mounted":
+      if (transformPass) {
+        assert(args.text === "()")
+        state.hooks.onMounted = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
       }
       break
     default:
