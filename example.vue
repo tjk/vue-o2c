@@ -1,3 +1,8 @@
+<template lang="pug">
+div
+  p Wonderful
+</template>
+
 <script>
 export default {
   props: {
@@ -14,7 +19,7 @@ export default {
   },
   methods: {
     doIt() {
-      console.log(`${this.greeting} ${this.name}`);
+      console.log(`${this.greeting} ${this.name} ${this.$el.clientHeight}`);
     },
   },
   mounted() {
@@ -23,3 +28,9 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+:root {
+  background: red;
+}
+</style>

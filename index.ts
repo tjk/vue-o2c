@@ -38,7 +38,12 @@ type State = {
   transformed?: string
 }
 
-function transform(vuePath: string): State {
+function transformPath(sfcPath: string): State {
+  const sfc = fs.readFileSync(sfcPath, "utf8")
+  return transform(sfc)
+}
+
+function transform(sfc: string): State {
   const state: State = {
     importNodes: [],
     hooks: {},
@@ -49,26 +54,40 @@ function transform(vuePath: string): State {
     using: {},
     nonRefs: new Set(),
     methods: {},
+    watchers: {},
   }
 
-  const data = fs.readFileSync(vuePath, "utf8")
-  const lines = data.split("\n")
+  const lines = sfc.split("\n")
 
   let scriptStartIdx: number | undefined
   let scriptEndIdx: number | undefined
   let ts = false
+  let templateStartIdx: number | undefined
+  let templateEndIdx: number | undefined
+  let pug = false
+  // XXX ensure these aren't strings inside sfc sections... 
+  // do a proper parse or maintain which part of sfc we are in
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (line.match(/<script/)) {
       scriptStartIdx = i
       if (line.match(/setup/)) {
         scriptStartIdx = undefined
+        break
       }
-      if (line.match(/lang="ts"/)) {
+      if (line.match(/lang="ts"/) || line.match(/lang='ts'/)) {
         ts = true
       }
     } else if (line.match(/<\/script/)) {
       scriptEndIdx = i
+    } else if (line.match(/<template/)) {
+      templateStartIdx = i
+      // XXX support other template langs
+      if (line.match(/lang="pug"/) || line.match(/lang='pug'/)) {
+        pug = true
+      }
+    } else if (line.match(/<\/template/)) {
+      templateEndIdx = i
     }
   }
 
@@ -77,9 +96,6 @@ function transform(vuePath: string): State {
     return state
   }
 
-  // XXX handle if js is after start tag or before end tag but no one does this
-  const code = lines.slice(scriptStartIdx + 1, scriptEndIdx).join("\n")
-
   const parser = new Parser()
   if (ts) {
     parser.setLanguage(typescript)
@@ -87,20 +103,26 @@ function transform(vuePath: string): State {
     parser.setLanguage(javascript)
   }
 
-  const tree = parser.parse(code)
+  // XXX handle if js is after start tag or before end tag but no one does this
+  const script = lines.slice(scriptStartIdx + 1, scriptEndIdx).join("\n")
+  const tree = parser.parse(script)
+
+  let template: string | undefined
+  if (templateStartIdx != null) {
+    // XXX handle if template is after start tag or before end tag but no one does this
+    template = lines.slice(templateStartIdx + 1, templateEndIdx).join("\n")
+  }
+
   // write out everything that is not the export statement node
-  for (const c0 of tree.rootNode.children) {
-    if (c0.type === "import_statement") {
-      state.importNodes.push(c0)
-    } else if (c0.type === "export_statement") {
-      if (maybeHandleDefaultExport(state, c0)) {
+  for (const n of tree.rootNode.children) {
+    if (n.type === "import_statement") {
+      state.importNodes.push(n)
+    } else if (n.type === "export_statement") {
+      if (maybeHandleDefaultExport(state, n)) {
         continue
       }
     }
   }
-
-  console.log("------")
-  console.log()
 
   let importSection = ""
   const vueImportsUsed: string[] = []
@@ -151,7 +173,6 @@ function transform(vuePath: string): State {
     importSection += `import { ${vueRouterImportsUsed.join(', ')} } from "vue-router"\n`
   }
   for (const importNode of state.importNodes) {
-    // TODO look if we already have a vue import and then add whichever features we use
     importSection += `${importNode.text}\n`
   }
 
@@ -165,7 +186,8 @@ function transform(vuePath: string): State {
     }
     propsSection += `defineProps<{\n`
     for (const k in state.props) {
-      propsSection += `  ${k}: ${state.props[k]}\n`
+      // TODO maybe not optional prop required attribute right?
+      propsSection += `  ${k}?: ${state.props[k]}\n`
     }
     propsSection += `}>()`
     if (Object.keys(state.propDefaultNodes).length) {
@@ -250,7 +272,30 @@ function transform(vuePath: string): State {
     methodsSection,
   ].filter(Boolean)
 
-  state.transformed = `<script setup lang="ts">\n${sections.join("\n")}</script>`
+  let transformedSections: string[] = []
+
+  if (templateStartIdx != null) {
+    assert(template)
+    if (templateStartIdx < scriptStartIdx) {
+      transformedSections.push(...lines.slice(0, templateStartIdx + 1))
+      transformedSections.push(template)
+      transformedSections.push(...lines.slice(templateStartIdx, scriptStartIdx))
+      transformedSections.push(`<script setup lang="ts">\n${sections.join("\n")}</script>`)
+      transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
+    } else {
+      transformedSections.push(...lines.slice(0, scriptStartIdx))
+      transformedSections.push(`<script setup lang="ts">\n${sections.join("\n")}</script>`)
+      transformedSections.push(...lines.slice(scriptEndIdx, templateStartIdx + 1))
+      transformedSections.push(template)
+      transformedSections.push(...lines.slice(templateEndIdx, lines.length))
+    }
+  } else {
+    transformedSections.push(...lines.slice(0, scriptStartIdx))
+    transformedSections.push(`<script setup lang="ts">\n${sections.join("\n")}</script>`)
+    transformedSections.push(...lines.slice(scriptEndIdx, lines.length))
+  }
+
+  state.transformed = transformedSections.join("\n")
 
   console.log(state.transformed)
 
@@ -642,4 +687,4 @@ function maybeHandleDefaultExport(state: State, n: SyntaxNode): boolean {
   return defaultExport
 }
 
-transform(path.resolve(process.argv[2]))
+transformPath(path.resolve(process.argv[2]))
