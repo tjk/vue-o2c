@@ -17,7 +17,7 @@ type State = {
   }
   props: Record<string, string> // name -> type string
   propDefaultNodes: Record<string, string>
-  refs: Record<string, SyntaxNode>
+  refs: Record<string, string>
   computeds: Record<string, string>
   methods: Record<string, string>
   using: {
@@ -211,7 +211,7 @@ function transform(vuePath: string) {
   }
   if (Object.keys(state.refs).length) {
     for (const k in state.refs) {
-      refsSection += `const ${k} = ref(${state.refs[k].text})\n`
+      refsSection += `const ${k} = ref(${state.refs[k]})\n`
     }
   }
 
@@ -475,14 +475,18 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
   }
 }
 
-function handleDataMethod(state: State, n: SyntaxNode) { // StatementBlock
+function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
   for (const c of n.children) {
     if (c.type === "return_statement") {
       assert(c.children[0].type === "return")
       assert(c.children[1].type === "object")
       handleObject(c.children[1], {
         onKeyValue(key: string, n: SyntaxNode) {
-          state.refs[key] = n // TODO check n is not something 'weird'?
+          if (transformPass) {
+            state.refs[key] = transformBlock(state, n.text) // XXX reindent?
+          } else {
+            state.refs[key] = "<observed>"
+          }
         },
         onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
           assert(false, meth)
@@ -496,7 +500,7 @@ function handleDataMethod(state: State, n: SyntaxNode) { // StatementBlock
 function handleDefaultExportMethod(state: State, meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode, transformPass = true) {
   switch (meth) {
     case "data":
-      handleDataMethod(state, block)
+      handleDataMethod(state, block, transformPass)
       break
     case "created":
       if (transformPass) {

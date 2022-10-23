@@ -14,16 +14,21 @@ Given the following file:
 
 ```vue
 <script>
-// Options API
 export default {
+  props: {
+    greeting: {
+      type: String,
+      default: "Hello",
+    },
+  },
   data() {
     return {
-      name: 'John',
+      name: this.$route.query.name || 'John',
     };
   },
   methods: {
     doIt() {
-      console.log(`Hello ${this.name}`);
+      console.log(`${this.greeting} ${this.name}`);
     },
   },
   mounted() {
@@ -34,7 +39,10 @@ export default {
 ```
 
 ```bash
-$ npx tsx vo2c examples/blog-1/options.vue
+$ git clone git@github.com:tjk/vo2c.git
+$ cd vo2c
+$ pnpm i
+$ pnpm exec tsx index.ts ./example.vue
 ```
 
 Will output the following:
@@ -42,15 +50,24 @@ Will output the following:
 ```vue
 <script setup lang="ts">
 import { onMounted, ref } from "vue"
+import { useRoute } from "vue-router"
 
-const name = ref('John')
+const props = withDefaults(defineProps<{
+  greeting: string
+}>(), {
+  greeting: "Hello",
+})
+
+const $route = useRoute()
+
+const name = ref($route.query.name || 'John')
 
 onMounted(() => {
   doIt();
 })
 
 function doIt() {
-  console.log(`Hello ${name.value}`);
+  console.log(`${props.greeting} ${name.value}`);
 }
 </script>
 ```
