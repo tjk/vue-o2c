@@ -9,7 +9,7 @@
     "/dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/cli.js",
     "prepublishOnly": "pnpm run build",
     "update:readme": "tsx scripts/updateReadme.ts"
   },
