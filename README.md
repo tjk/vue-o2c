@@ -18,12 +18,15 @@
 
 ```bash
 $ npx vue-o2c /path/to/sfc.vue
+...
+<transformed sfc code>
+...
 ```
 
 ### Programmatically
 
 ```bash
-$ pnpm add vue-o2c
+$ pnpm add -D vue-o2c
 ```
 
 *Please keep in mind, API is very experimental and likely will change!*
