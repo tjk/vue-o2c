@@ -102,7 +102,6 @@ function transform(sfc: string): State {
   const script = lines.slice(scriptStartIdx + 1, scriptEndIdx).join("\n")
   const tree = parser.parse(script)
 
-  // write out everything that is not the export statement node
   for (const n of tree.rootNode.children) {
     if (n.type === "import_statement") {
       state.importNodes.push(n)
@@ -110,6 +109,8 @@ function transform(sfc: string): State {
       if (maybeHandleDefaultExport(state, n)) {
         continue
       }
+    } else {
+      assert(false, "need to write out non import/export statement: n.type")
     }
   }
 
@@ -275,10 +276,8 @@ function transform(sfc: string): State {
   } else {
     templateStartIdx = undefined // no transformation needed
   }
-  if (Object.keys(state.refs).length) {
-    for (const k in state.refs) {
-      refsSection += `const ${k} = ref(${state.refs[k]})\n`
-    }
+  for (const k in state.refs) {
+    refsSection += `const ${k} = ref(${state.refs[k]})\n`
   }
 
   let hooksSection = ""
@@ -290,14 +289,26 @@ function transform(sfc: string): State {
   }
 
   let computedsSection = ""
-  if (Object.keys(state.computeds).length) {
-    for (const k in state.computeds) {
-      computedsSection += `const ${k} = computed(${state.computeds[k]})\n`
-    }
+  for (const k in state.computeds) {
+    computedsSection += `const ${k} = computed(${state.computeds[k]})\n`
   }
 
   let watchersSection = ""
-  // TODO
+  for (const k in state.watchers) {
+    const watcher = state.watchers[k]
+    watchersSection += `const ${k} = watch(${watcher.handler}`
+    if (watcher.deep || watcher.immediate) {
+      watchersSection += `, {\n`
+      if (watcher.deep) {
+        watchersSection += `  deep: ${watcher.deep},\n`
+      }
+      if (watcher.immediate) {
+        watchersSection += `  immediate: ${watcher.immediate},\n`
+      }
+      watchersSection += `}`
+    }
+    watchersSection += `)\n`
+  }
 
   let methodsSection = ""
   for (const k in state.methods) {
@@ -544,7 +555,6 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
   }
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      // TODO lots of different cases here
       switch (n.type) {
         case "object":
           const watch: WatchConfig = {}
@@ -564,14 +574,20 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
                   assert(false, key)
               }
             },
+            onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
+              watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformBlock(state, block.text), 0)}`
+            },
           })
+          state.watchers[key] = watch
           break
         default:
           assert(false, n.type)
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-      assert(false, meth)
+      const watch: WatchConfig = {}
+      watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformBlock(state, block.text), 0)}`
+      state.watchers[meth] = watch
     },
   })
 }
