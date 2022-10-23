@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en" style="height:100%">
+  <head>
+    <style>
+* {box-sizing:border-box;margin:0;padding:0}
+    </style>
+  </head>
+  <body style="height:100%">
+    <div style="height:100%;display:flex">
+      <div style="flex:1 1 0%">
+        <div style="height:100%;padding:10px">
+          <h2>Input</h2>
+          <textarea id="input" style="width:100%;height:100%"></textarea>
+        </div>
+      </div>
+      <div style="flex:1 1 0%">
+        <div style="height:100%;padding:10px">
+          <h2>Output</h2>
+          <textarea id="output" style="width:100%;height:100%"></textarea>
+        </div>
+      </div>
+    </div>
+    <script src="https://unpkg.com/web-tree-sitter@0.20.7/tree-sitter.js"></script>
+    <script type="module">
+import { scan, transform as _transform } from "https://unpkg.com/vue-o2c/dist/core.js"
+
+export default async function transform(sfc) {
+  const state = scan(sfc)
+  if (!state.scan.script) {
+    return state
+  }
+  const Parser = window.TreeSitter
+  await Parser.init()
+  const parser = new Parser()
+  parser.setLanguage(await Parser.Language.load(state.scan.scriptTs 
+    ? "/tree-sitter-typescript.wasm"
+    : "/tree-sitter-javascript.wasm"
+  ))
+  _transform(state, parser)
+  return state
+}
+
+const input = document.getElementById("input");
+const output = document.getElementById("output");
+
+const initialInputValue = `<template lang="pug">
+div
+  p Wonderful
+</template>
+
+<script>
+export default {
+  props: {
+    greeting: {
+      type: String,
+      default: "Hello",
+    },
+  },
+  data() {
+    this.initializing = true
+    return {
+      name: this.$route.query.name || 'John',
+    };
+  },
+  methods: {
+    doIt() {
+      console.log(\`\${this.greeting} \${this.name} \${this.$el.clientHeight}\`);
+    },
+  },
+  mounted() {
+    this.doIt();
+    delete this.initializing // should not become \`delete initializing\` (so use $this)
+  },
+  watch: {
+    watchMethod(v) {
+      console.log("watchMethod", v)
+    },
+    watchObject: {
+      deep: true,
+      immediate: true,
+      async handler(v, ov) {
+        console.log("watchObject", v, ov)
+      },
+    },
+  },
+};
+%end-script%
+
+<style scoped>
+:root {
+  background: red;
+}
+</style>`.replace("%end-script%", "</scri" + "pt>") // otherwise breaks html
+input.value = initialInputValue
+
+input.addEventListener("input", async e => {
+  output.value = "Transforming..."
+  const state = await transform(e.target.value)
+  if (state.transformed) {
+    output.value = state.transformed
+  }
+})
+    </script>
+  </body>
+</html>

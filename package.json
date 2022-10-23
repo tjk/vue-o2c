@@ -2,6 +2,7 @@
   "name": "vue-o2c",
   "version": "0.1.1",
   "description": "Vue Options API to Composition API converter",
+  "type": "module",
   "main": "dist/index.js",
   "bin": "dist/cli.js",
   "types": "dist/index.d.ts",
@@ -19,8 +20,10 @@
   "devDependencies": {
     "@types/node": "^18.11.3",
     "release-it": "^15.5.0",
+    "tree-sitter-cli": "^0.20.7",
     "tsx": "^3.10.4",
-    "typescript": "^4.8.4"
+    "typescript": "^4.8.4",
+    "web-tree-sitter": "^0.20.7"
   },
   "dependencies": {
     "tree-sitter": "^0.20.0",
@@ -34,5 +37,8 @@
   "bugs": {
     "url": "https://github.com/tjk/vue-o2c/issues"
   },
-  "homepage": "https://github.com/tjk/vue-o2c#readme"
+  "homepage": "https://github.com/tjk/vue-o2c#readme",
+  "peerDependencies": {
+    "web-tree-sitter": "^0.20.7"
+  }
 }

@@ -1,8 +1,10 @@
 {
   "compilerOptions": {
-    "outDir": "dist",
     "declaration": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "target": "es6"
   },
-  "include": ["src/index.ts", "src/cli.ts"]
+  "include": ["src"]
 }
