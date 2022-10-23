@@ -17,6 +17,11 @@ Working through stuff case by case
 Given the following file:
 
 ```vue
+<template lang="pug">
+div
+  p Wonderful
+</template>
+
 <script>
 export default {
   props: {
@@ -33,7 +38,7 @@ export default {
   },
   methods: {
     doIt() {
-      console.log(`${this.greeting} ${this.name}`);
+      console.log(`${this.greeting} ${this.name} ${this.$el.clientHeight}`);
     },
   },
   mounted() {
@@ -42,6 +47,12 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+:root {
+  background: red;
+}
+</style>
 ```
 
 ```bash
@@ -54,18 +65,25 @@ $ pnpm exec tsx index.ts ./example.vue
 Will output the following:
 
 ```vue
+<template lang="pug">
+div(ref="$el")
+  p Wonderful
+</template>
+
 <script setup lang="ts">
 import { onMounted, ref } from "vue"
 import { useRoute } from "vue-router"
 
 const props = withDefaults(defineProps<{
-  greeting: string
+  greeting?: string
 }>(), {
   greeting: "Hello",
 })
 
 const $route = useRoute()
 const $this = {}
+
+const $el = ref<HTMLElement | undefined>()
 const name = ref($route.query.name || 'John')
 
 onMounted(() => {
@@ -74,7 +92,13 @@ onMounted(() => {
 })
 
 function doIt() {
-  console.log(`${props.greeting} ${name.value}`);
+  console.log(`${props.greeting} ${name.value} ${$el.value.clientHeight}`);
 }
 </script>
+
+<style scoped>
+:root {
+  background: red;
+}
+</style>
 ```
