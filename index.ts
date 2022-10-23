@@ -18,8 +18,10 @@ type State = {
   propDefaultNodes: Record<string, string>
   refs: Record<string, SyntaxNode>
   computeds: Record<string, string>
+  methods: Record<string, string>
   using: {
     $attrs?: boolean
+    $el?: boolean
     $emit?: boolean
     $route?: boolean
     $router?: boolean
@@ -76,6 +78,7 @@ function transform(vuePath: string) {
     computeds: {},
     using: {},
     nonRefs: new Set(),
+    methods: {},
   }
 
   const tree = parser.parse(code)
@@ -167,9 +170,16 @@ function transform(vuePath: string) {
     }
     console.log()
   }
-  if (state.using.$attrs || state.using.$slots) {
+  // injections section (router, etc.)
+  if (state.using.$attrs || state.using.$slots || state.using.$route || state.using.$router) {
     if (state.using.$attrs) {
       console.log("const $attrs = useAttrs()")
+    }
+    if (state.using.$route) {
+      console.log("const $route = useRoute()")
+    }
+    if (state.using.$router) {
+      console.log("const $router = useRouter()")
     }
     if (state.using.$slots) {
       console.log("const $slots = useSlots()")
@@ -187,6 +197,10 @@ function transform(vuePath: string) {
     }
     console.log()
   }
+  if (state.using.$el) {
+    // TODO need to rewrite the template root (can we check if there is not a single root?? -- need pug tree-sitter)
+    console.log("const $el = ref<HTMLElement | undefined>()")
+  }
   if (Object.keys(state.refs).length) {
     for (const k in state.refs) {
       console.log(`const ${k} = ref(${state.refs[k].text})`)
@@ -202,6 +216,10 @@ function transform(vuePath: string) {
       console.log(`const ${k} = computed(${state.computeds[k]})`)
     }
     console.log() // TODO don't put trailing after the last section -- might have to join the sections
+  }
+  for (const k in state.methods) {
+    console.log(state.methods[k])
+    console.log()
   }
   console.log("</script>")
 
@@ -313,9 +331,10 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
                   assert(false, key)
               }
             },
-            onMethod(meth: string, async: boolean, n: SyntaxNode) {
+            onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
               assert(meth === "default", meth)
-              state.propDefaultNodes[propName] = `() => ${reindent(n.text, 2)}`
+              assert(args.text === "()")
+              state.propDefaultNodes[propName] = `() => ${reindent(block.text, 2)}`
             },
           })
           break
@@ -323,7 +342,7 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
           assert(false, n.children[2].type)
       }
     },
-    onMethod(meth: string, async: boolean, n: SyntaxNode) {
+    onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       assert(false, meth)
     },
   })
@@ -335,6 +354,11 @@ function transformBlock(state: State, s: string) {
     if (name === "$nextTick") {
       state.using.nextTick = true
       return "nextTick"
+    }
+    // XXX should warn about this usage and fix...
+    if (name === "$el") {
+      state.using.$el = true
+      return "$el.value"
     }
     if (["$emit", "$slots", "$attrs", "$router", "$route"].includes(name)) {
       state.using[name] = true
@@ -350,6 +374,9 @@ function transformBlock(state: State, s: string) {
     if (state.computeds[name] || state.refs[name]) {
       return `${name}.value`
     }
+    if (state.methods[name]) {
+      return name
+    }
     state.nonRefs.add(name)
     return name
   })
@@ -360,13 +387,29 @@ function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
     onKeyValue(key: string, n: SyntaxNode) {
       assert(false, key)
     },
-    onMethod(meth: string, async: boolean, n: SyntaxNode) {
+    onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       assert(!async)
       if (transformPass) {
-        const computedString = transformBlock(state, n.text)
+        const computedString = transformBlock(state, block.text)
+        assert(args.text === "()")
         state.computeds[meth] = `() => ${reindent(computedString, 0)}`
       } else {
         state.computeds[meth] = "<discovered>"
+      }
+    },
+  })
+}
+
+function handleMethods(state: State, n: SyntaxNode, transformPass = true) {
+  handleObject(n, {
+    onKeyValue(key: string, n: SyntaxNode) {
+      assert(false, key)
+    },
+    onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
+      if (transformPass) {
+        state.methods[meth] = `${async ? 'async ' : ''}function ${meth}${args.text} ${reindent(transformBlock(state, block.text), 0)}`
+      } else {
+        state.methods[meth] = "<discovered>"
       }
     },
   })
@@ -386,7 +429,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       state.emitsNode = n
       break
     case "methods":
-      // TODO
+      handleMethods(state, n, transformPass)
       break
     case "name":
       // do nothing with this...
@@ -413,7 +456,7 @@ function handleDataMethod(state: State, n: SyntaxNode) { // StatementBlock
         onKeyValue(key: string, n: SyntaxNode) {
           state.refs[key] = n // TODO check n is not something 'weird'?
         },
-        onMethod(meth: string, async: boolean, n: SyntaxNode) {
+        onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
           assert(false, meth)
         },
       })
@@ -422,14 +465,15 @@ function handleDataMethod(state: State, n: SyntaxNode) { // StatementBlock
 
 }
 
-function handleDefaultExportMethod(state: State, meth: string, async: boolean, n: SyntaxNode, transformPass = true) { // StatementBlock
+function handleDefaultExportMethod(state: State, meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode, transformPass = true) {
   switch (meth) {
     case "data":
-      handleDataMethod(state, n)
+      handleDataMethod(state, block)
       break
     case "created":
       if (transformPass) {
-        state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, n.text), 0)}`
+        assert(args.text === "()")
+        state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
       }
       break
     default:
@@ -440,7 +484,7 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, n
 
 type HandleObjectHooks = {
   onKeyValue?: (key: string, n: SyntaxNode) => void
-  onMethod?: (meth: string, async: boolean, n: SyntaxNode /* StatementBlock */) => void
+  onMethod?: (meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) => void
 }
 
 function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectNode
@@ -453,6 +497,7 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
     } else if (c.type === "method_definition") {
       let meth: string | undefined
       let async = false
+      let args: SyntaxNode | undefined
       let block: SyntaxNode | undefined
       for (const n of c.children) {
         switch (n.type) {
@@ -466,14 +511,14 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
             block = n
             break
           case "formal_parameters":
-            // TODO may need to emit these
+            args = n
             break
           default:
             assert(false, n.type)
         }
       }
-      assert(meth && block) 
-      hooks.onMethod?.(meth, async, block)
+      assert(meth && args && block) 
+      hooks.onMethod?.(meth, async, args, block)
     } else if (c.type === "comment") {
       // TODO preserve these -- onComment
     } else if (c.type === "{" || c.type === "," || c.type === "}") {
@@ -495,12 +540,14 @@ function maybeHandleDefaultExport(state: State, n: SyntaxNode): boolean {
       let transformPass = false
       handleObject(c1, {
         onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
-        onMethod: (meth: string, async: boolean, n: SyntaxNode) => handleDefaultExportMethod(state, meth, async, n, transformPass),
+        onMethod: (meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) => 
+          handleDefaultExportMethod(state, meth, async, args, block, transformPass),
       })
       transformPass = true
       handleObject(c1, {
         onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
-        onMethod: (meth: string, async: boolean, n: SyntaxNode) => handleDefaultExportMethod(state, meth, async, n, transformPass),
+        onMethod: (meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) => 
+          handleDefaultExportMethod(state, meth, async, args, block, transformPass),
       })
     }
   }
