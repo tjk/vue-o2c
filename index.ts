@@ -1,7 +1,8 @@
-import assert from "assert"
-import fs from "fs"
-import path from "path"
-import Parser, { SyntaxNode } from "tree-sitter"
+import * as assert from "assert"
+import * as fs from "fs"
+import * as path from "path"
+import * as Parser from "tree-sitter"
+import type { SyntaxNode } from "tree-sitter"
 import { typescript } from "tree-sitter-typescript"
 import javascript from "tree-sitter-javascript"
 

@@ -6,6 +6,7 @@ specifiers:
   tree-sitter-javascript: ^0.19.0
   tree-sitter-typescript: ^0.20.1
   tsx: ^3.10.4
+  typescript: ^4.8.4
 
 dependencies:
   tree-sitter: 0.20.0
@@ -15,6 +16,7 @@ dependencies:
 devDependencies:
   '@types/node': 18.11.3
   tsx: 3.10.4
+  typescript: 4.8.4
 
 packages:
 
@@ -670,6 +672,12 @@ packages:
     dependencies:
       safe-buffer: 5.2.1
     dev: false
+
+  /typescript/4.8.4:
+    resolution: {integrity: sha512-QCh+85mCy+h0IGff8r5XWzOVSbBO+KfeYrMQh7NJ58QujwcE22u+NUSmUxqF+un70P9GXKxa2HCNiTTMJknyjQ==}
+    engines: {node: '>=4.2.0'}
+    hasBin: true
+    dev: true
 
   /util-deprecate/1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}

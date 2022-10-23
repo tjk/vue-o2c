@@ -3,7 +3,11 @@
   "version": "0.0.1",
   "description": "Vue Options API to Composition API converter",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["/dist"],
   "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "pnpm run build",
     "update:readme": "tsx scripts/updateReadme.ts"
   },
   "keywords": [],
@@ -11,7 +15,8 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^18.11.3",
-    "tsx": "^3.10.4"
+    "tsx": "^3.10.4",
+    "typescript": "^4.8.4"
   },
   "dependencies": {
     "tree-sitter": "^0.20.0",
