@@ -1,10 +1,14 @@
 import type { SyntaxNode, Tree } from "tree-sitter"
 
+function fail(msg: string, n?: SyntaxNode) {
+  // TODO need class or something along state so we can add scriptStartIdx to row value
+  throw new Error(`${msg}${n ? ` @ (${n.startPosition.row}, ${n.startPosition.column})` : ""}`)
+}
+
 // don't use stdlib so can be used in browser env
 function assert(v: any, msg: string, n?: SyntaxNode) {
   if (!v) {
-    // TODO need class or something along state so we can add scriptStartIdx to row value
-    throw new Error(`assertion failed: ${msg}${n ? ` @ (${n.startPosition.row}, ${n.startPosition.column})` : ""}`)
+    fail(`assertion failed: ${msg}`, n)
   }
 }
 
@@ -36,6 +40,7 @@ type ScanState = {
 export type State = {
   scan: ScanState
   // parse
+  extraSource: string
   importNodes: SyntaxNode[]
   emitsNode?: SyntaxNode // ArrayNode
   hooks: {
@@ -64,6 +69,7 @@ export type State = {
 
 export function scan(sfc: string): State {
   const state: State = {
+    extraSource: "",
     scan: {},
     importNodes: [],
     hooks: {},
@@ -135,8 +141,10 @@ export function transform(state: State, parser: Parser) {
       if (maybeHandleDefaultExport(state, n)) {
         continue
       }
+    } else if (n.type === "ERROR") {
+      fail("syntax error", n)
     } else {
-      assert(false, `need to write out non import/export statement: ${n.type}`, n)
+      state.extraSource += n.text
     }
   }
 
@@ -166,7 +174,7 @@ export function transform(state: State, parser: Parser) {
   if (vueImportsUsed.length) {
     for (const importNode of state.importNodes) {
       if (importNode.text.match(/'vue'/) || importNode.text.match(/"vue"/)) {
-        assert(false, "editing existing vue import not supported yet") // TODO
+        fail("editing existing vue import not supported yet") // TODO
       }
     }
     // TODO check how other imports are written (quotes)
@@ -182,7 +190,7 @@ export function transform(state: State, parser: Parser) {
   if (vueRouterImportsUsed.length) {
     for (const importNode of state.importNodes) {
       if (importNode.text.match(/'vue-router'/) || importNode.text.match(/"vue-router"/)) {
-        assert(false, "editing existing vue-router import not supported yet") // TODO
+        fail("editing existing vue-router import not supported yet") // TODO
       }
     }
     // TODO check how other imports are written (quotes)
@@ -292,11 +300,11 @@ export function transform(state: State, parser: Parser) {
           templateLines[zeroIndentIdx] = newLine
           template = templateLines.join("\n")
         } else {
-          assert(false, "cannot edit pug template to suport $el")
+          fail("cannot edit pug template to suport $el")
         }
       } else {
         // probably need tree-sitter html?
-        assert(false, "cannot edit non-pug template to suport $el")
+        fail("cannot edit non-pug template to suport $el")
       }
     }
   }
@@ -373,7 +381,7 @@ export function transform(state: State, parser: Parser) {
     transformedSections.push(...lines.slice(scriptEndIdx, lines.length))
   }
 
-  state.transformed = transformedSections.join("\n")
+  state.transformed = transformedSections.join("\n") + state.extraSource
 
   return state
 }
@@ -449,7 +457,7 @@ function handlePropType(n?: SyntaxNode): string {
   } else if (n?.type === "identifier") {
     ret = propTypeIdentifierToType(n.text)
   } else {
-    assert(false, `prop value type not array or identifier: ${n?.text}`, n)
+    fail(`prop value type not array or identifier: ${n?.text}`, n)
   }
   // TODO tag these to be touched up after
   // if (ret.match(/any/)) {
@@ -481,7 +489,7 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
                   state.props[propName] = handlePropType(n) // TODO do not assume this node is identifier
                   break
                 default:
-                  assert(false, `prop attribute not handled: ${key}`, n)
+                  fail(`prop attribute not handled: ${key}`, n)
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
@@ -492,11 +500,11 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
           })
           break
         default:
-          assert(false, `prop value not identifier or object: ${n.children[2].type}`, n.children[2])
+          fail(`prop value not identifier or object: ${n.children[2].type}`, n.children[2])
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-      assert(false, `unexpected prop method: ${meth}`, o) // XXX wrong syntax node here
+      fail(`unexpected prop method: ${meth}`, o) // XXX wrong syntax node here
     },
   })
 }
@@ -538,7 +546,7 @@ function transformBlock(state: State, s: string) {
 function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      assert(false, `computed non-method key unexpected: ${key}`, n)
+      fail(`computed non-method key unexpected: ${key}`, n)
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       assert(!async, "computed async method unexpected", block) // XXX wrong syntax node
@@ -556,7 +564,7 @@ function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
 function handleMethods(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      assert(false, `methods has non-method: ${key}`, n)
+      fail(`methods has non-method: ${key}`, n)
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       if (transformPass) {
@@ -591,7 +599,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
                   watch.immediate = n.text
                   break
                 default:
-                  assert(false, `unexpected watch value attribute: ${key}`, n)
+                  fail(`unexpected watch value attribute: ${key}`, n)
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
@@ -601,7 +609,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
           state.watchers[key] = watch
           break
         default:
-          assert(false, `unexpected watch value type (not method or object): ${n.type}`, n)
+          fail(`unexpected watch value type (not method or object): ${n.type}`, n)
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
@@ -639,7 +647,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       handleWatchers(state, n, transformPass)
       break
     default:
-      assert(false, `export default key not supported: ${key}`, n)
+      fail(`export default key not supported: ${key}`, n)
   }
 }
 
@@ -671,7 +679,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
           }
         },
         onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-          assert(false, `data() return object method key not supported: ${meth}`, block) // XXX wrong syntax node
+          fail(`data() return object method key not supported: ${meth}`, block) // XXX wrong syntax node
         },
       })
     }
@@ -697,7 +705,7 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
       break
     default:
       // TODO other hooks destroyed, etc.
-      assert(false, `export default key not supported: ${meth}`, block) // XXX wrong syntax node
+      fail(`export default key not supported: ${meth}`, block) // XXX wrong syntax node
   }
 }
 
@@ -733,7 +741,7 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
             args = n
             break
           default:
-            assert(false, `unhandled method_definition structure, found: ${n.type}`, n)
+            fail(`unhandled method_definition structure, found: ${n.type}`, n)
         }
       }
       assert(meth && args && block, "did not find required nodes for method_definition", c) 
@@ -743,7 +751,7 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
     } else if (c.type === "{" || c.type === "," || c.type === "}") {
       // do nothing
     } else {
-      assert(false, `unexpected node found while parsing object: ${c.type}`, c)
+      fail(`unexpected node found while parsing object: ${c.type}`, c)
     }
   }
 }
