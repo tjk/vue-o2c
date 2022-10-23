@@ -7,6 +7,7 @@ export default {
     },
   },
   data() {
+    this.initializing = true
     return {
       name: this.$route.query.name || 'John',
     };
@@ -18,6 +19,7 @@ export default {
   },
   mounted() {
     this.doIt();
+    delete this.initializing // should not become `delete initializing` (so use $this)
   },
 };
 </script>

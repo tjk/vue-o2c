@@ -1,4 +1,3 @@
-// npx tsx optionsToComposition.ts </path/to/file.vue>
 import assert from "assert"
 import fs from "fs"
 import path from "path"
@@ -6,7 +5,11 @@ import Parser, { SyntaxNode } from "tree-sitter"
 import { typescript } from "tree-sitter-typescript"
 import javascript from "tree-sitter-javascript"
 
-// TODO need to make sure stuff is ordered right (so we don't define thing above or below)
+type WatchConfig = {
+  handler?: string
+  deep?: string
+  immediate?: string
+}
 
 type State = {
   importNodes: SyntaxNode[]
@@ -15,11 +18,12 @@ type State = {
     onBeforeMount?: string
     onMounted?: string
   }
-  props: Record<string, string> // name -> type string
+  props: Record<string, string>
   propDefaultNodes: Record<string, string>
   refs: Record<string, string>
   computeds: Record<string, string>
   methods: Record<string, string>
+  watchers: Record<string, WatchConfig>
   using: {
     $attrs?: boolean
     $el?: boolean
@@ -34,7 +38,19 @@ type State = {
   transformed?: string
 }
 
-function transform(vuePath: string) {
+function transform(vuePath: string): State {
+  const state: State = {
+    importNodes: [],
+    hooks: {},
+    props: {},
+    propDefaultNodes: {},
+    refs: {},
+    computeds: {},
+    using: {},
+    nonRefs: new Set(),
+    methods: {},
+  }
+
   const data = fs.readFileSync(vuePath, "utf8")
   const lines = data.split("\n")
 
@@ -58,7 +74,7 @@ function transform(vuePath: string) {
 
   if (scriptStartIdx == null || !scriptEndIdx) {
     console.log("script section start and end not found")
-    return
+    return state
   }
 
   // XXX handle if js is after start tag or before end tag but no one does this
@@ -69,18 +85,6 @@ function transform(vuePath: string) {
     parser.setLanguage(typescript)
   } else {
     parser.setLanguage(javascript)
-  }
-
-  const state: State = {
-    importNodes: [],
-    hooks: {},
-    props: {},
-    propDefaultNodes: {},
-    refs: {},
-    computeds: {},
-    using: {},
-    nonRefs: new Set(),
-    methods: {},
   }
 
   const tree = parser.parse(code)
@@ -187,6 +191,9 @@ function transform(vuePath: string) {
   if (state.using.$slots) {
     injectionsSection += "const $slots = useSlots()\n"
   }
+  if (state.nonRefs.size) {
+    injectionsSection += `const $this = {}`
+  }
 
   let emitsSection = ""
   assert(!((state.emitsNode ? 1 : 0) ^ (state.using.$emit ? 1 : 0)))
@@ -195,13 +202,6 @@ function transform(vuePath: string) {
   }
   if (state.emitsNode) {
     emitsSection += `defineEmits(${state.emitsNode.text})\n`
-  }
-
-  let nonRefsSection = ""
-  if (state.nonRefs.size) {
-    for (const k of state.nonRefs) {
-      nonRefsSection += `let ${k}\n`
-    }
   }
 
   let refsSection = ""
@@ -230,7 +230,7 @@ function transform(vuePath: string) {
     }
   }
 
-  let watchesSection = ""
+  let watchersSection = ""
   // TODO
 
   let methodsSection = ""
@@ -243,11 +243,10 @@ function transform(vuePath: string) {
     propsSection,
     injectionsSection,
     emitsSection,
-    nonRefsSection,
     refsSection,
     hooksSection,
     computedsSection,
-    watchesSection,
+    watchersSection,
     methodsSection,
   ].filter(Boolean)
 
@@ -407,7 +406,7 @@ function transformBlock(state: State, s: string) {
       return name
     }
     state.nonRefs.add(name)
-    return name
+    return `$this.${name}`
   })
 }
 
@@ -444,6 +443,45 @@ function handleMethods(state: State, n: SyntaxNode, transformPass = true) {
   })
 }
 
+function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
+  if (!transformPass) {
+    // cannot refer to watchers so need to discover them
+    return
+  }
+  handleObject(n, {
+    onKeyValue(key: string, n: SyntaxNode) {
+      // TODO lots of different cases here
+      switch (n.type) {
+        case "object":
+          const watch: WatchConfig = {}
+          handleObject(n, {
+            onKeyValue(key: string, n: SyntaxNode) {
+              switch (key) {
+                case "deep":
+                  watch.deep = n.text
+                  break
+                case "handler":
+                  watch.handler = n.text
+                  break
+                case "immediate":
+                  watch.immediate = n.text
+                  break
+                default:
+                  assert(false, key)
+              }
+            },
+          })
+          break
+        default:
+          assert(false, n.type)
+      }
+    },
+    onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
+      assert(false, meth)
+    },
+  })
+}
+
 function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, transformPass = true) {
   switch (key) {
     case "components":
@@ -468,7 +506,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       handleProps(state, n, transformPass)
       break
     case "watch":
-      // TODO
+      handleWatchers(state, n, transformPass)
       break
     default:
       assert(false, key)
@@ -477,6 +515,19 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
 
 function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
   for (const c of n.children) {
+    // TODO work to support preamble
+    // data() {
+    //   console.log("random side-effect")
+    //   return {
+    //     a: "hi",
+    //   }
+    // }
+    // should ideally become
+    // const a = ref<string>()
+    // ;(() => {
+    //   console.log("random side-effect")
+    //   a.value = "hi"
+    // })
     if (c.type === "return_statement") {
       assert(c.children[0].type === "return")
       assert(c.children[1].type === "object")
@@ -494,7 +545,6 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
       })
     }
   }
-
 }
 
 function handleDefaultExportMethod(state: State, meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode, transformPass = true) {

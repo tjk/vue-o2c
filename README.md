@@ -3,6 +3,9 @@
 **WORK IN PROGRESS** -- the following is not done:
 
 - bunch of stuff not implemented (including watchers)
+- publish package correctly (pretty important)
+- data() preamble -- if there is premable maybe just create refs then use the function to set them
+- allow options to configure (eg. no typescript)
 - $el needs to try to rewrite part of template
 - would like to maintain indentation, quoting, and semicolon rules
 
@@ -22,6 +25,7 @@ export default {
     },
   },
   data() {
+    this.initializing = true
     return {
       name: this.$route.query.name || 'John',
     };
@@ -33,6 +37,7 @@ export default {
   },
   mounted() {
     this.doIt();
+    delete this.initializing // should not become `delete initializing` (so use $this)
   },
 };
 </script>
@@ -59,11 +64,12 @@ const props = withDefaults(defineProps<{
 })
 
 const $route = useRoute()
-
+const $this = {}
 const name = ref($route.query.name || 'John')
 
 onMounted(() => {
   doIt();
+  delete $this.initializing // should not become `delete initializing` (so use $this)
 })
 
 function doIt() {
