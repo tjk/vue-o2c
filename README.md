@@ -74,7 +74,7 @@ $ pnpm exec tsx index.ts ./example.vue
 
 Will output the following:
 
-```vue pnpm exec tsx index.ts ./example.vue
+```vue pnpm exec tsx cli.ts ./example.vue
 <template lang="pug">
 div(ref="$el")
   p Wonderful

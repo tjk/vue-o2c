@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "declaration": true
+    "declaration": true,
+    "esModuleInterop": true
   },
-  "include": ["index.ts"]
+  "include": ["index.ts", "cli.ts"]
 }

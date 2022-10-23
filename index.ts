@@ -1,8 +1,6 @@
-import * as assert from "assert"
-import * as fs from "fs"
-import * as path from "path"
-import * as Parser from "tree-sitter"
-import type { SyntaxNode } from "tree-sitter"
+import assert from "assert"
+import fs from "fs"
+import Parser, { SyntaxNode } from "tree-sitter"
 import { typescript } from "tree-sitter-typescript"
 import javascript from "tree-sitter-javascript"
 
@@ -12,7 +10,7 @@ type WatchConfig = {
   immediate?: string
 }
 
-type State = {
+export type State = {
   importNodes: SyntaxNode[]
   emitsNode?: SyntaxNode // ArrayNode
   hooks: {
@@ -39,12 +37,12 @@ type State = {
   transformed?: string
 }
 
-function transformPath(sfcPath: string): State {
+export function transformPath(sfcPath: string): State {
   const sfc = fs.readFileSync(sfcPath, "utf8")
   return transform(sfc)
 }
 
-function transform(sfc: string): State {
+export function transform(sfc: string): State {
   const state: State = {
     importNodes: [],
     hooks: {},
@@ -352,9 +350,6 @@ function transform(sfc: string): State {
   }
 
   state.transformed = transformedSections.join("\n")
-
-  // only do this if not being used programmatically
-  console.log(state.transformed)
 
   return state
 }
@@ -752,5 +747,3 @@ function maybeHandleDefaultExport(state: State, n: SyntaxNode): boolean {
   }
   return defaultExport
 }
-
-transformPath(path.resolve(process.argv[2]))
