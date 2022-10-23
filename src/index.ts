@@ -1,6 +1,6 @@
 import fs from "fs"
 import Parser from "tree-sitter"
-import { typescript } from "tree-sitter-typescript"
+import typescript from "tree-sitter-typescript"
 import javascript from "tree-sitter-javascript"
 import { scan, transform as _transform, type State } from "./core"
 
