@@ -14,11 +14,11 @@ h1, h2, p {font-family:system-ui;font-weight:normal}
     <p>Vue Options API to Composition API Converter &middot; <a href="https://github.com/tjk/vue-o2c">view on GitHub</a></p>
     <p style="margin:10px 0"><em style="background:yellow">Try editing the input below to see the transformations in the output.</em></p>
     <div style="flex-grow:1;overflow:hidden;display:flex;column-gap:10px">
-      <div style="flex:1 1 0%;display:flex;flex-direction:column">
+      <div style="width:50%;display:flex;flex-direction:column">
         <h2 style="margin-bottom:10px;border-bottom:1px solid #ccc">Input</h2>
         <div id="input" style="flex-grow:1;overflow:hidden"></div>
       </div>
-      <div style="flex:1 1 0%;display:flex;flex-direction:column">
+      <div style="width:50%;display:flex;flex-direction:column">
         <h2 style="margin-bottom:10px;border-bottom:1px solid #ccc">Output</h2>
         <div id="output" style="flex-grow:1;overflow:hidden"></div>
       </div>
@@ -38,7 +38,7 @@ h1, h2, p {font-family:system-ui;font-weight:normal}
     <script src="https://unpkg.com/codemirror@5.25.0/mode/vue/vue.js"></script>
     <script src="https://unpkg.com/web-tree-sitter@0.20.7/tree-sitter.js"></script>
     <script type="module">
-import { scan, transform as _transform } from "https://unpkg.com/vue-o2c@0.1.7/dist/core.js"
+import { scan, transform as _transform } from "https://unpkg.com/vue-o2c@0.1.8/dist/core.js"
 
 export default async function transform(sfc) {
   const state = scan(sfc)
@@ -73,7 +73,7 @@ export default {
     },
   },
   data() {
-    // this.initializing = true -- would make data() complex (need to improve)
+    // this.initializing = true -- would make data() "complex" (need to improve)
     return {
       name: this.$route.query.name || 'John',
     };
