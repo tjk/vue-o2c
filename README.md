@@ -1,5 +1,7 @@
 # vue-o2c - Vue Options API to Composition API
 
+**[Demo / Online Playground](https://tjk.github.io/vue-o2c/)**
+
 **WORK IN PROGRESS** -- the following is not done:
 
 - bunch of stuff still not implemented (working through case by case)
