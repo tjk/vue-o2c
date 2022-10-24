@@ -67,7 +67,7 @@ export default {
   },
   methods: {
     doIt() {
-      console.log(`${this.greeting} ${this.name} ${this.$el.clientHeight}`);
+      console.log(`${this["greeting"]} ${this.name} ${this.$el.clientHeight}`);
     },
   },
   mounted() {
@@ -129,7 +129,7 @@ const name = ref($route.query.name || 'John')
 
 onMounted(() => {
   doIt();
-  delete $this.initializing // should not become `delete initializing` (so use $this)
+  delete this.initializing // should not become `delete initializing` (so use $this)
 })
 
 const watchMethod = watch((v) => {
@@ -145,6 +145,7 @@ const watchObject = watch(async (v, ov) => {
 function doIt() {
   console.log(`${props.greeting} ${name.value} ${$el.value.clientHeight}`);
 }
+
 </script>
 
 <style scoped>

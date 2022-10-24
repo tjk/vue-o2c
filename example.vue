@@ -19,7 +19,7 @@ export default {
   },
   methods: {
     doIt() {
-      console.log(`${this.greeting} ${this.name} ${this.$el.clientHeight}`);
+      console.log(`${this["greeting"]} ${this.name} ${this.$el.clientHeight}`);
     },
   },
   mounted() {
