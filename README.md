@@ -60,7 +60,7 @@ export default {
     },
   },
   data() {
-    this.initializing = true
+    // this.initializing = true -- uncommenting this breaks because data() becomes complex (need to improve)
     return {
       name: this.$route.query.name || 'John',
     };

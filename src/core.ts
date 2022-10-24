@@ -120,6 +120,18 @@ export function scan(sfc: string): State {
   return state
 }
 
+function assertNoErrorSyntaxNode(n: SyntaxNode) {
+  if (!n) {
+    return
+  }
+  if (n.type === "ERROR") {
+    fail("syntax error", n)
+  }
+  for (const c of n.children || [])  {
+    assertNoErrorSyntaxNode(c)
+  }
+}
+
 export function transform(state: State, parser: Parser) {
   const {
     lines,
@@ -134,6 +146,8 @@ export function transform(state: State, parser: Parser) {
   assert(script, "no options api script scanned")
   const tree = parser.parse(script)
 
+  assertNoErrorSyntaxNode(tree.rootNode)
+
   for (const n of tree.rootNode.children) {
     if (n.type === "import_statement") {
       state.importNodes.push(n)
@@ -141,8 +155,6 @@ export function transform(state: State, parser: Parser) {
       if (maybeHandleDefaultExport(state, n)) {
         continue
       }
-    } else if (n.type === "ERROR") {
-      fail("syntax error", n)
     } else {
       state.extraSource += n.text
     }
