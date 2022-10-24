@@ -653,7 +653,6 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
 }
 
 function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
-  console.log("n.children", n.children)
   for (const c of n.children) {
     switch (c.type) {
       case "{":
