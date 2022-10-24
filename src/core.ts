@@ -510,6 +510,7 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
 }
 
 function transformBlock(state: State, s: string) {
+  // TODO handle this['key']
   return s.replace(/this\.[$\w]+/g, (match) => {
     const name = match.slice(5)
     if (name === "$nextTick") {
@@ -652,36 +653,56 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
 }
 
 function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
+  console.log("n.children", n.children)
   for (const c of n.children) {
-    // TODO work to support preamble
-    // data() {
-    //   // unsupported
-    //   // (1) preamble: console.log("random side-effect")
-    //   // (2) complex structure: const ret = {}; ret.yo = "hi"; return ret
-    //   // -> if any of these cases come up, using.$data and set it to reactive and just rewrite to $data.yo
-    // }
-    // should ideally become
-    // const a = ref<string>()
-    // const $data = reactive(() => {
-    //   console.log("random side-effect")
-    //   const ret = {}; ret.yo = "hi"; return ret
-    // })()
-    // TODO $data.test (and in template need to rewrite too!!!) UGH
-    if (c.type === "return_statement") {
-      // if matches this, just do the simple version
-      assert(c.children[1].type === "object", "only simple data() object return supported", c.children[1])
-      handleObject(c.children[1], {
-        onKeyValue(key: string, n: SyntaxNode) {
-          if (transformPass) {
-            state.refs[key] = transformBlock(state, n.text) // XXX reindent?
-          } else {
-            state.refs[key] = "<observed>"
-          }
-        },
-        onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-          fail(`data() return object method key not supported: ${meth}`, block) // XXX wrong syntax node
-        },
-      })
+    switch (c.type) {
+      case "{":
+      case "}":
+      case "comment":
+        break
+      case "return_statement":
+        if (c.children[1]?.type === "object") {
+          // simple version, we can just make naked refs
+          // input:
+          // data() {
+          //   return { a: "hi" }
+          // }
+          // output:
+          // const a = ref("hi")
+          handleObject(c.children[1], {
+            onKeyValue(key: string, n: SyntaxNode) {
+              if (transformPass) {
+                state.refs[key] = transformBlock(state, n.text) // XXX reindent?
+              } else {
+                state.refs[key] = "<observed>"
+              }
+            },
+            onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
+              fail(`data() return object method key not supported: ${meth}`, block) // XXX wrong syntax node
+            },
+          })
+          break
+        }
+        /* fall-through */
+      default:
+        // there might be a premable, we preserve entire function and then assign the returned object to refs in $data
+        // input:
+        // data() {
+        //   console.log("hi")
+        //   const ret = {}; ret.yo = "hi"; return ret
+        // }
+        // output:
+        // const $data = Object.entries((() => {
+        //   console.log("hi")
+        //   const ret = {}; ret.yo = "hi"; return ret
+        // })()).reduce((acc, [k, v]) => {
+        //   acc[k] = ref(v)
+        //   return acc
+        // }, {})
+        // TODO we need to rewrite template in this case :/
+        // we can try to find strings in the method block but it can be fully dynamic :/
+        // state.using.$data = n.text
+        fail("complex data() not supported", c)
     }
   }
 }
