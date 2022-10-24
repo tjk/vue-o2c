@@ -1,8 +1,9 @@
 import type { SyntaxNode, Tree } from "tree-sitter"
+import { identifier } from "safe-identifier"
 
 function fail(msg: string, n?: SyntaxNode) {
   // TODO need class or something along state so we can add scriptStartIdx to row value
-  throw new Error(`${msg}${n ? ` @ (${n.startPosition.row}, ${n.startPosition.column})` : ""}`)
+  throw new Error(`${msg}${n ? ` @ (${n.startPosition.row + 1}, ${n.startPosition.column + 1})` : ""}`)
 }
 
 // don't use stdlib so can be used in browser env
@@ -39,8 +40,9 @@ type ScanState = {
 
 export type State = {
   scan: ScanState
+  tree?: Tree
   // parse
-  extraSource: string
+  extraScript: string
   importNodes: SyntaxNode[]
   emitsNode?: SyntaxNode // ArrayNode
   hooks: {
@@ -69,7 +71,7 @@ export type State = {
 
 export function scan(sfc: string): State {
   const state: State = {
-    extraSource: "",
+    extraScript: "",
     scan: {},
     importNodes: [],
     hooks: {},
@@ -144,7 +146,7 @@ export function transform(state: State, parser: Parser) {
   } = state.scan
 
   assert(script, "no options api script scanned")
-  const tree = parser.parse(script)
+  const tree = state.tree = parser.parse(script)
 
   assertNoErrorSyntaxNode(tree.rootNode)
 
@@ -156,7 +158,7 @@ export function transform(state: State, parser: Parser) {
         continue
       }
     } else {
-      state.extraSource += n.text
+      state.extraScript += `${n.text}\n`
     }
   }
 
@@ -359,7 +361,7 @@ export function transform(state: State, parser: Parser) {
     methodsSection += `${state.methods[k]}\n`
   }
 
-  const sections = [
+  const scriptSections = [
     importSection,
     propsSection,
     injectionsSection,
@@ -371,6 +373,8 @@ export function transform(state: State, parser: Parser) {
     methodsSection,
   ].filter(Boolean)
 
+  const newScript = scriptSections.join("\n") + state.extraScript.trimEnd()
+
   // this can be simplified...
   let transformedSections: string[] = []
   if (template) {
@@ -378,22 +382,22 @@ export function transform(state: State, parser: Parser) {
       transformedSections.push(...lines.slice(0, templateStartIdx + 1))
       transformedSections.push(template)
       transformedSections.push(...lines.slice(templateEndIdx, scriptStartIdx))
-      transformedSections.push(`<script setup lang="ts">\n${sections.join("\n")}</script>`)
+      transformedSections.push(`<script setup lang="ts">\n${newScript}\n</script>`)
       transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
     } else {
       transformedSections.push(...lines.slice(0, scriptStartIdx))
-      transformedSections.push(`<script setup lang="ts">\n${sections.join("\n")}</script>`)
-      transformedSections.push(...lines.slice(scriptEndIdx, templateStartIdx + 1))
+      transformedSections.push(`<script setup lang="ts">\n${newScript}\n</script>`)
+      transformedSections.push(...lines.slice(scriptEndIdx + 1, templateStartIdx + 1))
       transformedSections.push(template)
       transformedSections.push(...lines.slice(templateEndIdx, lines.length))
     }
   } else {
     transformedSections.push(...lines.slice(0, scriptStartIdx))
-    transformedSections.push(`<script setup lang="ts">\n${sections.join("\n")}</script>`)
-    transformedSections.push(...lines.slice(scriptEndIdx, lines.length))
+    transformedSections.push(`<script setup lang="ts">\n${newScript}\n</script>`)
+    transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
   }
 
-  state.transformed = transformedSections.join("\n") + state.extraSource
+  state.transformed = transformedSections.join("\n")
 
   return state
 }
@@ -521,39 +525,98 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
   })
 }
 
-function transformBlock(state: State, s: string) {
-  // TODO handle this['key']
-  return s.replace(/this\.[$\w]+/g, (match) => {
-    const name = match.slice(5)
+type OnNode = (n: SyntaxNode) => void
+function bfs(n: SyntaxNode, onNode: OnNode) {
+  const q = [n]
+  while (q.length) {
+    const c = q.shift()
+    onNode(c)
+    q.push(...c.children)
+  }
+}
+
+function transformNode(state: State, n: SyntaxNode) {
+  const replacements = []
+  const handleThisKey = (name: string, startIndex: number, endIndex: number, textNode: SyntaxNode) => {
+    const pushReplacement = (value: string) => {
+      replacements.push({
+        startIndex: startIndex - n.startIndex,
+        endIndex: endIndex - n.startIndex,
+        value,
+      })
+    }
     if (name === "$nextTick") {
       state.using.nextTick = true
-      return "nextTick"
+      pushReplacement("nextTick")
+      return
     }
     // XXX should warn about this usage and fix...
     if (name === "$el") {
       state.using.$el = true
-      return "$el.value"
+      pushReplacement("$el.value")
+      return
     }
     if (["$emit", "$slots", "$attrs", "$router", "$route"].includes(name)) {
       state.using[name] = true
-      return name
+      pushReplacement(name)
+      return
     }
     // TODO need to supply a config of how to get prototype -- eg:
     // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
-    assert(!name.startsWith("$"), `config needed to determine how to replace global property: ${name}`)
+    assert(!name.startsWith("$"), `config needed to determine how to replace global property: ${name}`, textNode)
+    assert(name === identifier(name), `unsafe identifier not supported: ${name}`, textNode)
     if (state.props[name]) {
       state.using.props = true
-      return `props.${name}`
+      pushReplacement(`props.${name}`)
+      return
     } 
     if (state.computeds[name] || state.refs[name]) {
-      return `${name}.value`
+      pushReplacement(`${name}.value`)
+      return
     }
     if (state.methods[name]) {
-      return name
+      pushReplacement(name)
+      return
     }
     state.nonRefs.add(name)
+    pushReplacement(`this.${name}`)
     return `$this.${name}`
+  }
+  // want to preserve whitespace so i think strat should be start from text but navigate nodes and then replace
+  bfs(n, (c: SyntaxNode) => {
+    if (c.type === "this") {
+      // look at the next nodes
+      // 0: this
+      const c1 = c.nextSibling
+      const c2 = c1?.nextSibling
+      const c3 = c2?.nextSibling
+      if (c1?.type === ".") {
+        // this.<key>
+        assert(c2, "expected sibling after this.", c1)
+        assert(c2.type === "property_identifier", "expected property_identifier after `this.`")
+        handleThisKey(c2.text, c.startIndex, c2.endIndex, c2)
+      } else if (c1?.type === "[" && c2.type === "string" && c3?.type === "]") {
+        // 1: [
+        // 2: ' OR "
+        // 3: <key>
+        // 4: ' OR "
+        // 5: ]
+        handleThisKey(c2.text.slice(1, c2.text.length - 1), c.startIndex, c3.endIndex, c2)
+      } else {
+        fail("unsupported this attribute while transforming", c.parent)
+      }
+    }
   })
+  const sortedReplacements = replacements.sort((a, b) => a.startIndex - b.startIndex)
+  let ret = ""
+  let idx = 0
+  for (let i = 0; i < sortedReplacements.length; i++) {
+    const r = sortedReplacements[i]
+    ret += n.text.substring(idx, r.startIndex) + r.value
+    idx = r.endIndex
+  }
+  ret += n.text.substring(idx)
+  return ret
 }
 
 function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
@@ -564,7 +627,7 @@ function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       assert(!async, "computed async method unexpected", block) // XXX wrong syntax node
       if (transformPass) {
-        const computedString = transformBlock(state, block.text)
+        const computedString = transformNode(state, block)
         assert(args.text === "()", `computed method has unexpected args: ${args.text}`, args)
         state.computeds[meth] = `() => ${reindent(computedString, 0)}`
       } else {
@@ -581,7 +644,7 @@ function handleMethods(state: State, n: SyntaxNode, transformPass = true) {
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       if (transformPass) {
-        state.methods[meth] = `${async ? 'async ' : ''}function ${meth}${args.text} ${reindent(transformBlock(state, block.text), 0)}`
+        state.methods[meth] = `${async ? 'async ' : ''}function ${meth}${args.text} ${reindent(transformNode(state, block), 0)}`
       } else {
         state.methods[meth] = DISCOVERED
       }
@@ -616,7 +679,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-              watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformBlock(state, block.text), 0)}`
+              watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformNode(state, block), 0)}`
             },
           })
           state.watchers[key] = watch
@@ -627,7 +690,7 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       const watch: WatchConfig = {}
-      watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformBlock(state, block.text), 0)}`
+      watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformNode(state, block), 0)}`
       state.watchers[meth] = watch
     },
   })
@@ -683,7 +746,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
           handleObject(c.children[1], {
             onKeyValue(key: string, n: SyntaxNode) {
               if (transformPass) {
-                state.refs[key] = transformBlock(state, n.text) // XXX reindent?
+                state.refs[key] = transformNode(state, n) // XXX reindent?
               } else {
                 state.refs[key] = "<observed>"
               }
@@ -726,13 +789,13 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
     case "created":
       if (transformPass) {
         assert(args.text === "()", `created hook method has unexpected args: ${args.text}`, args)
-        state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
+        state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformNode(state, block), 0)}`
       }
       break
     case "mounted":
       if (transformPass) {
         assert(args.text === "()", `mounted hook method has unexpected args: ${args.text}`, args)
-        state.hooks.onMounted = `${async ? 'async ' : ''}() => ${reindent(transformBlock(state, block.text), 0)}`
+        state.hooks.onMounted = `${async ? 'async ' : ''}() => ${reindent(transformNode(state, block), 0)}`
       }
       break
     default:
