@@ -3,6 +3,7 @@ lockfileVersion: 5.4
 specifiers:
   '@types/node': ^18.11.3
   diff: ^5.1.0
+  esbuild: ^0.15.12
   picocolors: ^1.0.0
   release-it: ^15.5.0
   safe-identifier: ^0.4.2
@@ -23,6 +24,7 @@ dependencies:
 devDependencies:
   '@types/node': 18.11.3
   diff: 5.1.0
+  esbuild: 0.15.12
   picocolors: 1.0.0
   release-it: 15.5.0
   tree-sitter-cli: 0.20.7
