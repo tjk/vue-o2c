@@ -38,9 +38,19 @@ type ScanState = {
   templatePug?: boolean
 }
 
+// XXX merge user provided one into state.config
+export type Config = {
+  useSemis?: boolean
+  useDoubleQuotes?: boolean // otherwise use singles
+}
+
 export type State = {
   scan: ScanState
   tree?: Tree
+  config: Config
+  // memoized
+  semi: string
+  quote: string
   // parse
   extraScript: string
   importNodes: SyntaxNode[]
@@ -73,6 +83,11 @@ export function scan(sfc: string): State {
   const state: State = {
     extraScript: "",
     scan: {},
+    config: {},
+    // memo
+    quote: "'",
+    semi: "",
+    // ---
     importNodes: [],
     hooks: {},
     props: {},
@@ -122,16 +137,9 @@ export function scan(sfc: string): State {
   return state
 }
 
-function assertNoErrorSyntaxNode(n: SyntaxNode) {
-  if (!n) {
-    return
-  }
-  if (n.type === "ERROR") {
-    fail("syntax error", n)
-  }
-  for (const c of n.children || [])  {
-    assertNoErrorSyntaxNode(c)
-  }
+function importString(state: State, pkg: string, imports: string[] | string) {
+  const importsString = Array.isArray(imports) ? `{ ${imports.join(', ')} }` : imports
+  return `import ${importsString} from ${state.quote}${pkg}${state.quote}${state.semi}\n`
 }
 
 export function transform(state: State, parser: Parser) {
@@ -148,7 +156,34 @@ export function transform(state: State, parser: Parser) {
   assert(script, "no options api script scanned")
   const tree = state.tree = parser.parse(script)
 
-  assertNoErrorSyntaxNode(tree.rootNode)
+  let singleQuotes = 0
+  let doubleQuotes = 0
+  bfs(tree.rootNode, (n: SyntaxNode) => {
+    if (n.type === "ERROR") {
+      fail("syntax error", n)
+    }
+    if (!("useSemis" in state.config) && n.type === ";") {
+      state.config.useSemis = true
+    }
+    if (n.type === "string") {
+      if (n.text[0] === "'") {
+        singleQuotes++
+      } else if (n.text[0] === '"') {
+        doubleQuotes++
+      }
+    }
+  })
+  if (!("useDoubleQuotes" in state.config) && doubleQuotes > singleQuotes) {
+    state.config.useDoubleQuotes = true
+  }
+
+  // set the memoized values
+  if (state.config.useDoubleQuotes) {
+    state.quote = '"'
+  }
+  if (state.config.useSemis) {
+    state.semi = ";"
+  }
 
   for (const n of tree.rootNode.children) {
     if (n.type === "import_statement") {
@@ -191,8 +226,7 @@ export function transform(state: State, parser: Parser) {
         fail("editing existing vue import not supported yet") // TODO
       }
     }
-    // TODO check how other imports are written (quotes)
-    importSection += `import { ${vueImportsUsed.join(', ')} } from "vue"\n`
+    importSection += importString(state, "vue", vueImportsUsed)
   }
   const vueRouterImportsUsed: string[] = []
   if (state.using.$router) {
@@ -207,8 +241,7 @@ export function transform(state: State, parser: Parser) {
         fail("editing existing vue-router import not supported yet") // TODO
       }
     }
-    // TODO check how other imports are written (quotes)
-    importSection += `import { ${vueRouterImportsUsed.join(', ')} } from "vue-router"\n`
+    importSection += importString(state, "vue-router", vueRouterImportsUsed)
   }
   for (const importNode of state.importNodes) {
     importSection += `${importNode.text}\n`
@@ -235,7 +268,7 @@ export function transform(state: State, parser: Parser) {
       }
       propsSection += `})`
     }
-    propsSection += "\n"
+    propsSection += `${state.semi}\n`
   }
 
   let injectionsSection = ""
@@ -323,20 +356,20 @@ export function transform(state: State, parser: Parser) {
     }
   }
   for (const k in state.refs) {
-    refsSection += `const ${k} = ref(${state.refs[k]})\n`
+    refsSection += `const ${k} = ref(${state.refs[k]})${state.semi}\n`
   }
 
   let hooksSection = ""
   if (state.hooks.onBeforeMount) {
-    hooksSection += `onBeforeMount(${state.hooks.onBeforeMount})\n`
+    hooksSection += `onBeforeMount(${state.hooks.onBeforeMount})${state.semi}\n`
   }
   if (state.hooks.onMounted) {
-    hooksSection += `onMounted(${state.hooks.onMounted})\n`
+    hooksSection += `onMounted(${state.hooks.onMounted})${state.semi}\n`
   }
 
   let computedsSection = ""
   for (const k in state.computeds) {
-    computedsSection += `const ${k} = computed(${state.computeds[k]})\n`
+    computedsSection += `const ${k} = computed(${state.computeds[k]})${state.semi}\n`
   }
 
   let watchersSection = ""
@@ -353,12 +386,12 @@ export function transform(state: State, parser: Parser) {
       }
       watchersSection += `}`
     }
-    watchersSection += `)\n`
+    watchersSection += `)${state.semi}\n`
   }
 
   let methodsSection = ""
   for (const k in state.methods) {
-    methodsSection += `${state.methods[k]}\n`
+    methodsSection += `${state.methods[k]}${state.semi}\n`
   }
 
   const scriptSections = [
@@ -373,7 +406,7 @@ export function transform(state: State, parser: Parser) {
     methodsSection,
   ].filter(Boolean)
 
-  const newScript = scriptSections.join("\n") + state.extraScript.trimEnd()
+  const newScript = scriptSections.join("\n") + state.extraScript
 
   // this can be simplified...
   let transformedSections: string[] = []
@@ -382,18 +415,18 @@ export function transform(state: State, parser: Parser) {
       transformedSections.push(...lines.slice(0, templateStartIdx + 1))
       transformedSections.push(template)
       transformedSections.push(...lines.slice(templateEndIdx, scriptStartIdx))
-      transformedSections.push(`<script setup lang="ts">\n${newScript}\n</script>`)
+      transformedSections.push(`<script setup lang="ts">\n${newScript}</script>\n`)
       transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
     } else {
       transformedSections.push(...lines.slice(0, scriptStartIdx))
-      transformedSections.push(`<script setup lang="ts">\n${newScript}\n</script>`)
+      transformedSections.push(`<script setup lang="ts">\n${newScript}</script>\n`)
       transformedSections.push(...lines.slice(scriptEndIdx + 1, templateStartIdx + 1))
       transformedSections.push(template)
       transformedSections.push(...lines.slice(templateEndIdx, lines.length))
     }
   } else {
     transformedSections.push(...lines.slice(0, scriptStartIdx))
-    transformedSections.push(`<script setup lang="ts">\n${newScript}\n</script>`)
+    transformedSections.push(`<script setup lang="ts">\n${newScript}</script>\n`)
     transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
   }
 

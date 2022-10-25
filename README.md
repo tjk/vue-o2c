@@ -10,7 +10,7 @@
 - handle setup() in options api
 - allow options to configure (eg. no typescript)
 - $el needs to try to rewrite part of template
-- would like to maintain indentation, quoting, and semicolon rules
+- would like to maintain indentation
 
 ## Usage
 

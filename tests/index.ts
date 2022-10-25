@@ -11,15 +11,37 @@ const __dirname = path.dirname(__filename)
 function printDiff(from: string, to: string) {
   const diff = diffLines(from, to)
   diff.forEach(part => {
-    const color = part.added ? "green" : part.removed ? "red" : "gray"
-    const truncated = part.value.replace(/[\t ]*$/, '')
-    process.stderr.write(pc[color](truncated))
-    if (color === "green" || color === "red") {
-      const trailingSpaces = part.value.match(/([\t ]+)$/)
-      if (trailingSpaces) {
-        const bgColor = `bg${color[0].toUpperCase() + color.substring(1)}`
-        process.stderr.write(pc[bgColor](trailingSpaces[1]))
+    let color = part.added ? "green" : part.removed ? "red" : "gray"
+    const md = part.value.match(/(\s*)$/)
+    let printNewline = true
+    if (md) {
+      if (md.index) {
+        process.stderr.write(pc[color](part.value.substring(0, md.index)))
       }
+      if (md[1].length && (color === "green" || color === "red")) {
+        printNewline = false
+        color = `bg${color[0].toUpperCase() + color.substring(1)}`
+        // remove one of the newlines unless whole part is whitespace
+        let str = md[1]
+        if (!str.match(/\n\n$/) && !part.value.match(/^\s+$/)) {
+          str = str.slice(0, str.length - 1)
+          printNewline = true
+        }
+        if (str.length) {
+          // \n\n\n will write 4 newlines (with first one not colored)!?!?!?
+          str.split("").forEach((s: string) => {
+            if (s === "\n") {
+              process.stderr.write(pc[color]("\\n"))
+              process.stderr.write("\n")
+            } else {
+              process.stderr.write(pc[color](s))
+            }
+          })
+        }
+      }
+    }
+    if (printNewline) {
+      process.stderr.write("\n")
     }
   })
   console.log()
@@ -43,6 +65,14 @@ function main() {
         console.log()
         printDiff(state.transformed, expected)
         console.log()
+        // console.log("actual:")
+        // console.log()
+        // console.log(`|${pc.red(state.transformed)}|`)
+        // console.log()
+        // console.log("expected:")
+        // console.log()
+        // console.log(`|${pc.green(expected)}|`)
+        // console.log()
         failed = true
       }
     } else {
