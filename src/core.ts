@@ -54,7 +54,6 @@ export type State = {
   // parse
   extraScript: string
   importNodes: SyntaxNode[]
-  emitsNode?: SyntaxNode // ArrayNode
   hooks: {
     onBeforeMount?: string
     onMounted?: string
@@ -74,6 +73,7 @@ export type State = {
     $slots?: boolean
     nextTick?: boolean
     props?: boolean
+    emits: Set<string>
   }
   nonRefs: Set<string>
   transformed?: string
@@ -94,7 +94,9 @@ export function scan(sfc: string): State {
     propDefaultNodes: {},
     refs: {},
     computeds: {},
-    using: {},
+    using: {
+      emits: new Set(),
+    },
     nonRefs: new Set(),
     methods: {},
     watchers: {},
@@ -300,12 +302,14 @@ export function transform(state: State, parser: Parser) {
   }
 
   let emitsSection = ""
-  assert(!((state.emitsNode ? 1 : 0) ^ (state.using.$emit ? 1 : 0)), "specifies emits but doesn't or vice versa")
   if (state.using.$emit) {
+    if (!state.using.emits.size) {
+      fail("using $emit but no emits discovered") // should never happen
+    }
     emitsSection += "const $emit = "
   }
-  if (state.emitsNode) {
-    emitsSection += `defineEmits(${state.emitsNode.text})\n`
+  if (state.using.emits.size) {
+    emitsSection += `defineEmits([${Array.from(state.using.emits).join(", ")}])\n`
   }
 
   let refsSection = ""
@@ -656,20 +660,44 @@ function transformNode(state: State, n: SyntaxNode) {
       const c1 = c.nextSibling
       const c2 = c1?.nextSibling
       const c3 = c2?.nextSibling
+      let member
       if (c1?.type === ".") {
         // this.<key>
         assert(c2, "expected sibling after this.", c1)
         assert(c2.type === "property_identifier", "expected property_identifier after `this.`")
-        handleThisKey(c2.text, c.startIndex, c2.endIndex, c2)
+        member = c2.text
+        handleThisKey(member, c.startIndex, c2.endIndex, c2)
       } else if (c1?.type === "[" && c2.type === "string" && c3?.type === "]") {
         // 1: [
         // 2: ' OR "
         // 3: <key>
         // 4: ' OR "
         // 5: ]
-        handleThisKey(c2.text.slice(1, c2.text.length - 1), c.startIndex, c3.endIndex, c2)
+        member = c2.text.slice(1, c2.text.length - 1)
+        handleThisKey(member, c.startIndex, c3.endIndex, c2)
       } else {
         fail("unsupported this attribute while transforming", c.parent)
+      }
+      // collect first arg of this.$emit as well for using.emits
+      if (member === "$emit") {
+        let foundEmit = false
+        let n = c
+        // look up the tree until call_expression
+        while (n) {
+          if (n.type === "call_expression") {
+            for (const c of n.children) {
+              if (c.type === "arguments") {
+                assert(c.children[0].type === "(", "expected parent after $emit", c)
+                assert(c.children[1].type === "string", "expected string as first $emit arg", c)
+                state.using.emits.add(c.children[1].text)
+                foundEmit = true
+              }
+            }
+            break
+          }
+          n = n.parent
+        }
+        assert(foundEmit, "could not find emit to define", c)
       }
     }
   })
@@ -773,7 +801,10 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
     case "emits":
       // property_identifier : array
       assert(n.type === "array", `expected emits to be an array: ${n.type}`, n)
-      state.emitsNode = n
+      handleArray(n, c => {
+        assert(c.type === "string", "expected emits to be array of simple strings", c)
+        state.using.emits.add(c.text)
+      })
       break
     case "methods":
       handleMethods(state, n, transformPass)
