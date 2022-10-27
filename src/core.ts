@@ -527,7 +527,6 @@ function handlePropType(n?: SyntaxNode): string {
 }
 
 function handleProps(state: State, s: SyntaxNode, transformPass = true) { // ObjectNode or ArrayNode
-  console.log(s)
   if (s.type === 'array') {
     handleArray(s, (n: SyntaxNode) => {
         state.props[n.text] = 'any';
