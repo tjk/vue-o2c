@@ -526,8 +526,14 @@ function handlePropType(n?: SyntaxNode): string {
   return ret
 }
 
-function handleProps(state: State, o: SyntaxNode, transformPass = true) { // ObjectNode
-  handleObject(o, {
+function handleProps(state: State, s: SyntaxNode, transformPass = true) { // ObjectNode or ArrayNode
+  if (s.type === 'array') {
+    handleArray(s, (n: SyntaxNode) => {
+        state.props[n.text] = 'any';
+    })
+    return;
+  }
+  handleObject(s, {
     onKeyValue(propName: string, n: SyntaxNode) {
       switch (n.type) {
         case "identifier":
@@ -564,7 +570,7 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
       }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
-      fail(`unexpected prop method: ${meth}`, o) // XXX wrong syntax node here
+      fail(`unexpected prop method: ${meth}`, s) // XXX wrong syntax node here
     },
   })
 }
@@ -776,7 +782,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       // do nothing with this...
       break
     case "props":
-      assert(n.type === "object", `expected props to be an object: ${n.type}`, n)
+      assert(n.type === "object" || n.type === "array", `expected props to be an object or array: ${n.type}`, n)
       handleProps(state, n, transformPass)
       break
     case "watch":
