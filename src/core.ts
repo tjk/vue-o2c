@@ -137,8 +137,8 @@ export function scan(sfc: string): State {
   return state
 }
 
-function importString(state: State, pkg: string, imports: string[] | string) {
-  const importsString = Array.isArray(imports) ? `{ ${imports.join(', ')} }` : imports
+function importString(state: State, pkg: string, imports: Set<string>) {
+  const importsString = `{ ${Array.from(imports).join(', ')} }`
   return `import ${importsString} from ${state.quote}${pkg}${state.quote}${state.semi}\n`
 }
 
@@ -197,54 +197,65 @@ export function transform(state: State, parser: Parser) {
     }
   }
 
-  let importSection = ""
-  const vueImportsUsed: string[] = []
+  const vueImportsUsed = new Set<string>()
   if (state.hooks.onBeforeMount) {
-    vueImportsUsed.push("onBeforeMount")
+    vueImportsUsed.add("onBeforeMount")
   }
   if (state.hooks.onMounted) {
-    vueImportsUsed.push("onMounted")
+    vueImportsUsed.add("onMounted")
   }
   if (state.using.$attrs) {
-    vueImportsUsed.push("useAttrs")
+    vueImportsUsed.add("useAttrs")
   }
   if (Object.keys(state.computeds).length) {
-    vueImportsUsed.push("computed")
+    vueImportsUsed.add("computed")
   }
   if (state.using.nextTick) {
-    vueImportsUsed.push("nextTick")
+    vueImportsUsed.add("nextTick")
   }
   if (Object.keys(state.refs).length) {
-    vueImportsUsed.push("ref")
+    vueImportsUsed.add("ref")
   }
   if (state.using.$slots) {
-    vueImportsUsed.push("useSlots")
+    vueImportsUsed.add("useSlots")
   }
-  if (vueImportsUsed.length) {
-    for (const importNode of state.importNodes) {
-      if (importNode.text.match(/'vue'/) || importNode.text.match(/"vue"/)) {
-        fail("editing existing vue import not supported yet") // TODO
-      }
-    }
-    importSection += importString(state, "vue", vueImportsUsed)
-  }
-  const vueRouterImportsUsed: string[] = []
+  const vueRouterImportsUsed = new Set<string>()
   if (state.using.$router) {
-    vueRouterImportsUsed.push("useRouter")
+    vueRouterImportsUsed.add("useRouter")
   }
   if (state.using.$route) {
-    vueRouterImportsUsed.push("useRoute")
+    vueRouterImportsUsed.add("useRoute")
   }
-  if (vueRouterImportsUsed.length) {
-    for (const importNode of state.importNodes) {
-      if (importNode.text.match(/'vue-router'/) || importNode.text.match(/"vue-router"/)) {
-        fail("editing existing vue-router import not supported yet") // TODO
-      }
-    }
-    importSection += importString(state, "vue-router", vueRouterImportsUsed)
-  }
+  let importSection = ""
+  let hasVueImport = false
+  let hasVueRouterImport = false
   for (const importNode of state.importNodes) {
-    importSection += `${importNode.text}\n`
+    // XXX check syntax node instead of string compare?
+    if (importNode.text.match(/'vue'/) || importNode.text.match(/"vue"/)) {
+      // XXX support import vue from "vue" (not just import { ... } from "vue") ?
+      treeSelect(importNode, ["named_imports", "import_specifier", "identifier"], n => {
+        if (n.text !== "defineComponent") {
+          vueImportsUsed.add(n.text)
+        }
+      })
+      hasVueImport = true
+      importSection += importString(state, "vue", vueImportsUsed)
+    } else if (importNode.text.match(/'vue-router'/) || importNode.text.match(/"vue-router"/)) {
+      // XXX support import vue from "vue" (not just import { ... } from "vue") ?
+      treeSelect(importNode, ["named_imports", "import_specifier", "identifier"], n => {
+        vueRouterImportsUsed.add(n.text)
+      })
+      hasVueRouterImport = true
+      importSection += importString(state, "vue-router", vueRouterImportsUsed)
+    } else {
+      importSection += `${importNode.text}\n`
+    }
+  }
+  if (!hasVueRouterImport && vueRouterImportsUsed.size) {
+    importSection = importString(state, "vue-router", vueRouterImportsUsed) + importSection
+  }
+  if (!hasVueImport && vueImportsUsed.size) {
+    importSection = importString(state, "vue", vueImportsUsed) + importSection
   }
 
   let propsSection = ""
@@ -558,14 +569,30 @@ function handleProps(state: State, o: SyntaxNode, transformPass = true) { // Obj
   })
 }
 
-type OnNode = (n: SyntaxNode) => void
+type OnNode = (n: SyntaxNode) => void | false
 function bfs(n: SyntaxNode, onNode: OnNode) {
   const q = [n]
   while (q.length) {
     const c = q.shift()
-    onNode(c)
-    q.push(...c.children)
+    const ret = onNode(c)
+    if (ret !== false) {
+      q.push(...c.children)
+    }
   }
+}
+// <selector1> <selector2> ...
+function treeSelect(n: SyntaxNode, selectors: string[], onNode: OnNode) {
+  const [selector, ...rest] = selectors
+  bfs(n, c => {
+    if (c.type === selector) {
+      if (rest.length) {
+        treeSelect(n, rest, onNode)
+      } else {
+        onNode(c)
+      }
+      return false
+    }
+  })
 }
 
 function transformNode(state: State, n: SyntaxNode) {
@@ -884,27 +911,46 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
   }
 }
 
+function handleDefaultExport(state: State, n: SyntaxNode) {
+  let transformPass = false
+  handleObject(n, {
+    onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
+    onMethod: (meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) => 
+      handleDefaultExportMethod(state, meth, async, args, block, transformPass),
+  })
+  transformPass = true
+  handleObject(n, {
+    onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
+    onMethod: (meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) => 
+      handleDefaultExportMethod(state, meth, async, args, block, transformPass),
+  })
+}
+
 function maybeHandleDefaultExport(state: State, n: SyntaxNode): boolean {
   let defaultExport = false
   for (const c1 of n.children) {
+    if (defaultExport) {
+      if (c1.type === "object") {
+        handleDefaultExport(state, c1)
+        return true
+      }
+      if (c1.type === "call_expression") {
+        const c2 = c1.children[0]
+        if (c2.type === "identifier" && c2.text === "defineComponent") {
+          const c3 = c1.children[1]
+          if (c3.type === "arguments") {
+            if (c3.children[0].type === "(" && c3.children[2].type === ")" && c3.children[1].type === "object") {
+              handleDefaultExport(state, c3.children[1])
+              return true
+            }
+          }
+        }
+      }
+      fail("unexpected default export", c1)
+    }
     if (c1.text === "default") {
       defaultExport = true
     }
-    if (defaultExport && c1.type === "object") {
-      // handle the default export here
-      let transformPass = false
-      handleObject(c1, {
-        onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
-        onMethod: (meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) => 
-          handleDefaultExportMethod(state, meth, async, args, block, transformPass),
-      })
-      transformPass = true
-      handleObject(c1, {
-        onKeyValue: (key: string, n: SyntaxNode) => handleDefaultExportKeyValue(state, key, n, transformPass),
-        onMethod: (meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) => 
-          handleDefaultExportMethod(state, meth, async, args, block, transformPass),
-      })
-    }
   }
-  return defaultExport
+  return false
 }

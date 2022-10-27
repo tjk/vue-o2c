@@ -65,14 +65,16 @@ function main() {
         console.log()
         printDiff(state.transformed, expected)
         console.log()
-        // console.log("actual:")
-        // console.log()
-        // console.log(`|${pc.red(state.transformed)}|`)
-        // console.log()
-        // console.log("expected:")
-        // console.log()
-        // console.log(`|${pc.green(expected)}|`)
-        // console.log()
+        // /*
+        console.log("actual:")
+        console.log()
+        console.log(`|${pc.red(state.transformed)}|`)
+        console.log()
+        console.log("expected:")
+        console.log()
+        console.log(`|${pc.green(expected)}|`)
+        console.log()
+        // */
         failed = true
       }
     } else {
