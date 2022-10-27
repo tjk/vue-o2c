@@ -47,10 +47,13 @@ function printDiff(from: string, to: string) {
   console.log()
 }
 
-function main() {
+function main(str?: string) {
   let failed = false
   const fixturesPath = path.resolve(__dirname, "./fixtures")
   for (const folder of fs.readdirSync(fixturesPath)) {
+    if (str && !folder.includes(str)) {
+      continue
+    }
     console.log(`- ${folder}`)
     // error.txt or output.vue
     const inputPath = path.join(fixturesPath, folder, "input.vue")
@@ -103,7 +106,7 @@ function main() {
 }
 
 try {
-  main()
+  main(process.argv[2])
 } catch (e) {
   console.error(e)
   process.exit(1)
