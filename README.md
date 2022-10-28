@@ -5,8 +5,8 @@
 **WORK IN PROGRESS** -- the following is not done:
 
 - bunch of stuff still not implemented (working through case by case)
-- publish package correctly (pretty important)
-- data() preamble -- if there is premable maybe just create refs then use the function to set them
+- publish package correctly for CLI command to work (need to check)
+- data() preamble -- if there is preamble maybe just create refs then use the function to set them
 - handle setup() in options api
 - allow options to configure (eg. no typescript)
 - $el needs to try to rewrite part of template
