@@ -82,6 +82,7 @@ export type State = {
     props?: boolean
     emits: Set<string>
     provides: Set<string>
+    injects: Set<string>
   }
   nonRefs: Set<string>
   transformed?: string
@@ -105,6 +106,7 @@ export function scan(sfc: string): State {
     using: {
       emits: new Set(),
       provides: new Set(),
+      injects: new Set(),
     },
     nonRefs: new Set(),
     methods: {},
@@ -211,6 +213,9 @@ export function transform(state: State, parser: Parser) {
   const vueImportsUsed = new Set<string>()
   if (Object.keys(state.computeds).length) {
     vueImportsUsed.add("computed")
+  }
+  if (state.using.injects.size) {
+    vueImportsUsed.add("inject")
   }
   if (state.using.nextTick) {
     vueImportsUsed.add("nextTick")
@@ -326,6 +331,9 @@ export function transform(state: State, parser: Parser) {
   }
   if (state.nonRefs.size) {
     injectionsSection += `const $this = {}\n`
+  }
+  for (const inj of state.using.injects) {
+    injectionsSection += `const $${inj} = inject(${state.quote}${inj}${state.quote})${state.semi}\n`
   }
 
   let emitsSection = ""
@@ -690,6 +698,10 @@ function transformNode(state: State, n: SyntaxNode) {
       pushReplacement(name)
       return
     }
+    if (state.using.injects.has(name)) {
+      pushReplacement(`$${name}`) // convention
+      return
+    }
     state.nonRefs.add(name)
     pushReplacement(`this.${name}`)
     return `$this.${name}`
@@ -847,6 +859,18 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
         state.using.emits.add(c.text)
       })
       break
+    case "inject":
+      if (n.type === "array") {
+        handleArray(n, c => {
+          assert(c.type === "string", "expected inject to be array of simple strings", c)
+          state.using.injects.add(c.text.slice(1, c.text.length - 1))
+        })
+      } else if (n.type === "object") {
+        fail("inject object not supported yet")
+      } else {
+        fail("expected inject to be an array or object", n)
+      }
+      break
     case "methods":
       handleMethods(state, n, transformPass)
       break
@@ -962,6 +986,9 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
         assert(block.children[2]?.type === "}", "expected close brace in block", block)
         state.hooks.errorCaptured = `${async ? 'async ' : ''}(${args.children[1].text}: Error) => ${reindent(transformNode(state, block), 0)}`
       }
+      break
+    case "provide":
+      fail("provide() not supported yet")
       break
     default:
       // TODO other hooks destroyed, etc.
