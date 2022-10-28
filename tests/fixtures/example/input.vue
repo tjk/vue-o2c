@@ -12,18 +12,18 @@ export default {
     },
   },
   data() {
-    // this.initializing = true -- uncommenting this breaks because data() becomes complex (need to improve)
+    // this.initializing = true -- would make data() "complex" (need to improve)
     return {
       name: this.$route.query.name || 'John',
-    };
+    }
   },
   methods: {
     doIt() {
-      console.log(`${this["greeting"]} ${this.name} ${this.$el.clientHeight}`);
+      console.log(`${this.greeting} ${this.name} ${this.$el.clientHeight}`)
     },
   },
   mounted() {
-    this.doIt();
+    this.doIt()
     delete this.initializing // should not become `delete initializing` (so use $this)
   },
   watch: {
@@ -38,7 +38,7 @@ export default {
       },
     },
   },
-};
+}
 </script>
 
 <style scoped>

@@ -466,28 +466,30 @@ export function transform(state: State, parser: Parser) {
   const newScript = scriptSections.join("\n") + state.extraScript
 
   // this can be simplified...
-  let transformedSections: string[] = []
+  let transformed = ""
   if (template) {
     if (templateStartIdx < scriptStartIdx) {
-      transformedSections.push(...lines.slice(0, templateStartIdx + 1))
-      transformedSections.push(template)
-      transformedSections.push(...lines.slice(templateEndIdx, scriptStartIdx))
-      transformedSections.push(`<script setup lang="ts">\n${newScript}</script>\n`)
-      transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
+      transformed += lines.slice(0, templateStartIdx + 1).join("\n")
+      transformed += `\n${template}\n`
+      transformed += lines.slice(templateEndIdx, scriptStartIdx).join("\n")
+      transformed += `\n<script setup lang="ts">\n${newScript}</script>\n`
+      transformed += lines.slice(scriptEndIdx + 1, lines.length).join("\n")
     } else {
-      transformedSections.push(...lines.slice(0, scriptStartIdx))
-      transformedSections.push(`<script setup lang="ts">\n${newScript}</script>\n`)
-      transformedSections.push(...lines.slice(scriptEndIdx + 1, templateStartIdx + 1))
-      transformedSections.push(template)
-      transformedSections.push(...lines.slice(templateEndIdx, lines.length))
+      transformed += lines.slice(0, scriptStartIdx).join("\n")
+      transformed += `\n<script setup lang="ts">\n${newScript}</script>\n`
+      transformed += lines.slice(scriptEndIdx + 1, templateStartIdx + 1).join("\n")
+      transformed += `\n${template}\n`
+      transformed += lines.slice(templateEndIdx, lines.length).join("\n")
     }
   } else {
-    transformedSections.push(...lines.slice(0, scriptStartIdx))
-    transformedSections.push(`<script setup lang="ts">\n${newScript}</script>\n`)
-    transformedSections.push(...lines.slice(scriptEndIdx + 1, lines.length))
+    transformed += [
+      lines.slice(0, scriptStartIdx).join("\n"),
+      `<script setup lang="ts">\n${newScript}</script>`,
+      lines.slice(scriptEndIdx + 1, lines.length).join("\n"),
+    ].filter(Boolean).join("\n")
   }
 
-  state.transformed = transformedSections.join("\n")
+  state.transformed = transformed
 
   return state
 }
@@ -973,7 +975,7 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
       if (transformPass) {
         assert(args.text === "()", `${meth} hook method has unexpected args: ${args.text}`, args)
         assert(block.children[0]?.type === "{", "expected open brace in block", block)
-        assert(block.children[2]?.type === "}", "expected close brace in block", block)
+        assert(block.children[block.children.length - 1]?.type === "}", "expected close brace in block", block)
         state.hooks[meth] = `${async ? 'async ' : ''}() => ${reindent(transformNode(state, block), 0)}`
       }
       break

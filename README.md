@@ -45,7 +45,7 @@ const s2: State = transform("<script>\nexport default {\n  props: {\n    a: Stri
 
 Given the following file:
 
-```vue cat example.vue
+```vue cat tests/fixtures/example/input.vue
 <template lang="pug">
 div
   p Wonderful
@@ -60,18 +60,18 @@ export default {
     },
   },
   data() {
-    // this.initializing = true -- uncommenting this breaks because data() becomes complex (need to improve)
+    // this.initializing = true -- would make data() "complex" (need to improve)
     return {
       name: this.$route.query.name || 'John',
-    };
+    }
   },
   methods: {
     doIt() {
-      console.log(`${this["greeting"]} ${this.name} ${this.$el.clientHeight}`);
+      console.log(`${this.greeting} ${this.name} ${this.$el.clientHeight}`)
     },
   },
   mounted() {
-    this.doIt();
+    this.doIt()
     delete this.initializing // should not become `delete initializing` (so use $this)
   },
   watch: {
@@ -86,7 +86,7 @@ export default {
       },
     },
   },
-};
+}
 </script>
 
 <style scoped>
@@ -105,7 +105,7 @@ $ pnpm exec tsx index.ts ./example.vue
 
 Will output the following:
 
-```vue pnpm exec tsx src/cli.ts ./example.vue
+```vue pnpm exec tsx src/cli.ts ./tests/fixtures/example/input.vue
 <template lang="pug">
 div(ref="$el")
   p Wonderful
@@ -128,7 +128,7 @@ const $el = ref<HTMLElement | undefined>()
 const name = ref($route.query.name || 'John')
 
 onMounted(() => {
-  doIt();
+  doIt()
   delete this.initializing // should not become `delete initializing` (so use $this)
 })
 
@@ -143,9 +143,8 @@ const watchObject = watch(async (v, ov) => {
 })
 
 function doIt() {
-  console.log(`${props.greeting} ${name.value} ${$el.value.clientHeight}`);
+  console.log(`${props.greeting} ${name.value} ${$el.value.clientHeight}`)
 }
-
 </script>
 
 <style scoped>
