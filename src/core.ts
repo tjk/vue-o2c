@@ -54,9 +54,16 @@ export type State = {
   // parse
   extraScript: string
   importNodes: SyntaxNode[]
-  hooks: {
-    onBeforeMount?: string
-    onMounted?: string
+  hooks: { // XXX what should be under `using` vs not?
+    beforeCreate?: string
+    created?: string
+    beforeMount?: string
+    mounted?: string
+    beforeUpdate?: string
+    updated?: string
+    beforeDestroy?: string
+    destroyed?: string
+    errorCaptured?: string
   }
   props: Record<string, string>
   propDefaultNodes: Record<string, string>
@@ -200,11 +207,26 @@ export function transform(state: State, parser: Parser) {
   }
 
   const vueImportsUsed = new Set<string>()
-  if (state.hooks.onBeforeMount) {
+  if (state.hooks.beforeMount) {
     vueImportsUsed.add("onBeforeMount")
   }
-  if (state.hooks.onMounted) {
+  if (state.hooks.beforeDestroy) {
+    vueImportsUsed.add("onBeforeUnmount")
+  }
+  if (state.hooks.beforeUpdate) {
+    vueImportsUsed.add("onBeforeUpdate")
+  }
+  if (state.hooks.errorCaptured) {
+    vueImportsUsed.add("onErrorCaptured")
+  }
+  if (state.hooks.mounted) {
     vueImportsUsed.add("onMounted")
+  }
+  if (state.hooks.destroyed) {
+    vueImportsUsed.add("onUnmounted")
+  }
+  if (state.hooks.updated) {
+    vueImportsUsed.add("onUpdated")
   }
   if (state.using.$attrs) {
     vueImportsUsed.add("useAttrs")
@@ -309,7 +331,7 @@ export function transform(state: State, parser: Parser) {
     emitsSection += "const $emit = "
   }
   if (state.using.emits.size) {
-    emitsSection += `defineEmits([${Array.from(state.using.emits).join(", ")}])\n`
+    emitsSection += `defineEmits([${Array.from(state.using.emits).join(", ")}])${state.semi}\n`
   }
 
   let refsSection = ""
@@ -374,14 +396,6 @@ export function transform(state: State, parser: Parser) {
     refsSection += `const ${k} = ref(${state.refs[k]})${state.semi}\n`
   }
 
-  let hooksSection = ""
-  if (state.hooks.onBeforeMount) {
-    hooksSection += `onBeforeMount(${state.hooks.onBeforeMount})${state.semi}\n`
-  }
-  if (state.hooks.onMounted) {
-    hooksSection += `onMounted(${state.hooks.onMounted})${state.semi}\n`
-  }
-
   let computedsSection = ""
   for (const k in state.computeds) {
     computedsSection += `const ${k} = computed(${state.computeds[k]})${state.semi}\n`
@@ -414,8 +428,16 @@ export function transform(state: State, parser: Parser) {
     propsSection,
     injectionsSection,
     emitsSection,
+    state.hooks.beforeCreate && `${state.hooks.beforeCreate}\n`, // XXX semi?
+    state.hooks.created && `${state.hooks.created}\n`, // XXX semi?
     refsSection,
-    hooksSection,
+    state.hooks.beforeMount && `onBeforeMount(${state.hooks.beforeMount})${state.semi}\n`,
+    state.hooks.mounted && `onMounted(${state.hooks.mounted})${state.semi}\n`,
+    state.hooks.beforeUpdate && `onBeforeUpdate(${state.hooks.beforeUpdate})${state.semi}\n`,
+    state.hooks.updated && `onUpdated(${state.hooks.updated})${state.semi}\n`,
+    state.hooks.beforeDestroy && `onBeforeUnmount(${state.hooks.beforeDestroy})${state.semi}\n`,
+    state.hooks.destroyed && `onUnmounted(${state.hooks.destroyed})${state.semi}\n`,
+    state.hooks.errorCaptured && `onErrorCaptured(${state.hooks.errorCaptured})${state.semi}\n`,
     computedsSection,
     watchersSection,
     methodsSection,
@@ -820,7 +842,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       handleWatchers(state, n, transformPass)
       break
     default:
-      fail(`export default key not supported: ${key}`, n)
+      fail(`export default key value not supported: ${key}`, n)
   }
 }
 
@@ -883,21 +905,41 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
     case "data":
       handleDataMethod(state, block, transformPass)
       break
+    case "beforeCreate":
     case "created":
       if (transformPass) {
-        assert(args.text === "()", `created hook method has unexpected args: ${args.text}`, args)
-        state.hooks.onBeforeMount = `${async ? 'async ' : ''}() => ${reindent(transformNode(state, block), 0)}`
+        assert(args.text === "()", `${meth} hook method has unexpected args: ${args.text}`, args)
+        assert(block.children[0]?.type === "{", "expected open brace in block", block)
+        assert(block.children[2]?.type === "}", "expected close brace in block", block)
+        state.hooks[meth] = reindent(transformNode(state, block.children[1]), 0)
       }
       break
+    case "beforeMount":
     case "mounted":
+    case "beforeUpdate": // XXX arg?
+    case "updated": // XXX arg?
+    case "beforeDestroy":
+    case "destroyed":
       if (transformPass) {
-        assert(args.text === "()", `mounted hook method has unexpected args: ${args.text}`, args)
-        state.hooks.onMounted = `${async ? 'async ' : ''}() => ${reindent(transformNode(state, block), 0)}`
+        assert(args.text === "()", `${meth} hook method has unexpected args: ${args.text}`, args)
+        assert(block.children[0]?.type === "{", "expected open brace in block", block)
+        assert(block.children[2]?.type === "}", "expected close brace in block", block)
+        state.hooks[meth] = `${async ? 'async ' : ''}() => ${reindent(transformNode(state, block), 0)}`
+      }
+      break
+    case "errorCaptured":
+      if (transformPass) {
+        assert(args.children[0].type === "(", "expected open paren in args", args)
+        assert(args.children[2].type === ")", "expected open paren in args", args)
+        assert(args.children[1].type === "identifier", "expected identifier in args", args)
+        assert(block.children[0]?.type === "{", "expected open brace in block", block)
+        assert(block.children[2]?.type === "}", "expected close brace in block", block)
+        state.hooks.errorCaptured = `${async ? 'async ' : ''}(${args.children[1].text}: Error) => ${reindent(transformNode(state, block), 0)}`
       }
       break
     default:
       // TODO other hooks destroyed, etc.
-      fail(`export default key not supported: ${meth}`, block) // XXX wrong syntax node
+      fail(`export default key method not supported: ${meth}`, block) // XXX wrong syntax node
   }
 }
 
