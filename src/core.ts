@@ -509,10 +509,18 @@ function propTypeIdentifierToType(s: string) {
       return "any[]"
     case "Boolean":
       return "boolean"
+    case "Date":
+      return "Date"
+    case "Function":
+      return "Function"
     case "Number":
       return "number"
+    case "Object":
+      return "object"
     case "String":
       return "string"
+    case "Symbol":
+      return "symbol"
     default:
       throw new Error(`unhandled prop type identifier: ${s}`)
   }
