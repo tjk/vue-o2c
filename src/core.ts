@@ -81,6 +81,7 @@ export type State = {
     nextTick?: boolean
     props?: boolean
     emits: Set<string>
+    provides: Set<string>
   }
   nonRefs: Set<string>
   transformed?: string
@@ -103,6 +104,7 @@ export function scan(sfc: string): State {
     computeds: {},
     using: {
       emits: new Set(),
+      provides: new Set(),
     },
     nonRefs: new Set(),
     methods: {},
@@ -207,6 +209,12 @@ export function transform(state: State, parser: Parser) {
   }
 
   const vueImportsUsed = new Set<string>()
+  if (Object.keys(state.computeds).length) {
+    vueImportsUsed.add("computed")
+  }
+  if (state.using.nextTick) {
+    vueImportsUsed.add("nextTick")
+  }
   if (state.hooks.beforeMount) {
     vueImportsUsed.add("onBeforeMount")
   }
@@ -228,14 +236,11 @@ export function transform(state: State, parser: Parser) {
   if (state.hooks.updated) {
     vueImportsUsed.add("onUpdated")
   }
+  if (state.using.provides.size) {
+    vueImportsUsed.add("provide")
+  }
   if (state.using.$attrs) {
     vueImportsUsed.add("useAttrs")
-  }
-  if (Object.keys(state.computeds).length) {
-    vueImportsUsed.add("computed")
-  }
-  if (state.using.nextTick) {
-    vueImportsUsed.add("nextTick")
   }
   if (Object.keys(state.refs).length) {
     vueImportsUsed.add("ref")
@@ -423,6 +428,12 @@ export function transform(state: State, parser: Parser) {
     methodsSection += `${state.methods[k]}${state.semi}\n`
   }
 
+  // XXX sort provides alphabetically
+  let providesSection = ""
+  for (const k of state.using.provides) {
+    providesSection += `provide(${state.quote}${k}${state.quote}, ${k})${state.semi}\n`
+  }
+
   const scriptSections = [
     importSection,
     propsSection,
@@ -441,6 +452,7 @@ export function transform(state: State, parser: Parser) {
     computedsSection,
     watchersSection,
     methodsSection,
+    providesSection,
   ].filter(Boolean)
 
   const newScript = scriptSections.join("\n") + state.extraScript
@@ -829,8 +841,7 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       handleComputeds(state, n, transformPass)
       break
     case "emits":
-      // property_identifier : array
-      assert(n.type === "array", `expected emits to be an array: ${n.type}`, n)
+      assert(n.type === "array", "expected emits to be an array", n)
       handleArray(n, c => {
         assert(c.type === "string", "expected emits to be array of simple strings", c)
         state.using.emits.add(c.text)
@@ -845,6 +856,13 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
     case "props":
       assert(n.type === "object" || n.type === "array", `expected props to be an object or array: ${n.type}`, n)
       handleProps(state, n, transformPass)
+      break
+    case "provide":
+      assert(n.type === "array", "expected provide to be an array", n)
+      handleArray(n, c => {
+        assert(c.type === "string", "expected provide to be array of simple strings", c)
+        state.using.provides.add(c.text.slice(1, c.text.length - 1))
+      })
       break
     case "watch":
       handleWatchers(state, n, transformPass)
