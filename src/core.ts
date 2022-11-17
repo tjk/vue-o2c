@@ -71,6 +71,7 @@ export type State = {
   computeds: Record<string, string>
   methods: Record<string, string>
   watchers: Record<string, WatchConfig>
+  filters: Record<string, string>
   using: {
     $attrs?: boolean
     $el?: boolean
@@ -111,6 +112,7 @@ export function scan(sfc: string): State {
     nonRefs: new Set(),
     methods: {},
     watchers: {},
+    filters: {},
   }
   const { scan } = state
 
@@ -437,6 +439,41 @@ export function transform(state: State, parser: Parser) {
   let methodsSection = ""
   for (const k in state.methods) {
     methodsSection += `${state.methods[k]}${state.semi}\n`
+  }
+  if (Object.keys(state.filters).length) {
+    if (!template) {
+      if (templateStartIdx != null) {
+        // XXX handle if template is after start tag or before end tag but no one does this
+        template = lines.slice(templateStartIdx + 1, templateEndIdx).join("\n")
+      } else {
+        fail("cannot find template to rewrite filters")
+      }
+    }
+    template = template.replace(/{{.*}}/g, match => {
+      // XXX preserve whether like {{ spaced }} or {{tight}}
+      let spacing = ""
+      if (match[2] === " ") {
+        spacing = " "
+      }
+      let str = match
+      const chunks = match.slice(2, match.length-2).split("|").map(c => c.trim())
+      if (chunks.length > 1) {
+        str = chunks[0]
+        for (let i = 1; i < chunks.length; i++) {
+          const chunk = chunks[i]
+          const parenIdx = chunk.indexOf("(")
+          if (parenIdx >= 0) {
+            str = `${chunk.slice(0, parenIdx+1)}${str}, ${chunk.slice(parenIdx+1)}`
+          } else {
+            str = `${chunk}(${str})`
+          }
+        }
+      }
+      return `{{${spacing}${str}${spacing}}}`
+    })
+  }
+  for (const k in state.filters) {
+    methodsSection += `${state.filters[k]}${state.semi}\n`
   }
 
   // XXX sort provides alphabetically
@@ -903,6 +940,26 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       handleArray(n, c => {
         assert(c.type === "string", "expected emits to be array of simple strings", c)
         state.using.emits.add(c.text)
+      })
+      break
+    case "filters":
+      assert(n.type === "object", "expected filters to be an object", n)
+      handleObject(n, {
+        onKeyValue(key, c) {
+          if (!transformPass) {
+            state.filters[key] = DISCOVERED
+          } else {
+            const { async, args, statement } = handleMethodKeyValue(key, c)
+            state.filters[key] = `${async ? 'async ' : ''}function ${key}${args} ${reindent(transformNode(state, statement), 0)}`
+          }
+        },
+        onMethod(meth, async, args, block) {
+          if (!transformPass) {
+            state.filters[meth] = DISCOVERED
+          } else {
+            state.filters[meth] = `${async ? 'async ' : ''}function ${meth}${args.text} ${reindent(transformNode(state, block), 0)}`
+          }
+        },
       })
       break
     case "inject":
