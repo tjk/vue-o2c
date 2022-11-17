@@ -708,7 +708,7 @@ function transformNode(state: State, n: SyntaxNode) {
       return
     }
     state.nonRefs.add(name)
-    pushReplacement(`this.${name}`)
+    pushReplacement(`$this.${name}`)
     return `$this.${name}`
   }
   // want to preserve whitespace so i think strat should be start from text but navigate nodes and then replace
