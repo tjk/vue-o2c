@@ -4,7 +4,7 @@ div(ref="$el")
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue"
+import { onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 
 const props = withDefaults(defineProps<{
