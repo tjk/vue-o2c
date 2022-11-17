@@ -772,7 +772,19 @@ function transformNode(state: State, n: SyntaxNode) {
 function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
     onKeyValue(key: string, n: SyntaxNode) {
-      fail(`computed non-method key unexpected: ${key}`, n)
+      if (!transformPass) {
+        state.computeds[key] = DISCOVERED
+        return
+      }
+      switch (n.type) {
+        case "object":
+          // XXX check that just get/set?
+          const computedString = transformNode(state, n)
+          state.computeds[key] = reindent(computedString, 0)
+          break
+        default:
+          fail(`computed object unexpected key: ${key}`, n)
+      }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       assert(!async, "computed async method unexpected", block) // XXX wrong syntax node
