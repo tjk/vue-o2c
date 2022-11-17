@@ -253,6 +253,9 @@ export function transform(state: State, parser: Parser) {
   if (state.using.$slots) {
     vueImportsUsed.add("useSlots")
   }
+  if (Object.keys(state.watchers).length) {
+    vueImportsUsed.add("watch")
+  }
   const vueRouterImportsUsed = new Set<string>()
   if (state.using.$router) {
     vueRouterImportsUsed.add("useRouter")
