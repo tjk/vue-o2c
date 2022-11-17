@@ -802,10 +802,39 @@ function handleComputeds(state: State, n: SyntaxNode, transformPass = true) {
   })
 }
 
+function handleMethodKeyValue(key: string, n: SyntaxNode) {
+  // (async) formal_paramaters => statement_block
+  let i = 0
+  let async = false
+  let args = "()"
+  if (n.children[i].type === "async") {
+    async = true
+    i++
+  }
+  if (n.children[i].type === "formal_parameters") {
+    args = n.children[i].text
+    i++
+  }
+  assert(n.children[i].type === "=>", "expected =>", n.children[i])
+  i++
+  assert(n.children[i].type === "statement_block", "expected statement block", n.children[i])
+  const statement = n.children[i]
+  return {
+    async,
+    args,
+    statement,
+  }
+}
+
 function handleMethods(state: State, n: SyntaxNode, transformPass = true) {
   handleObject(n, {
-    onKeyValue(key: string, n: SyntaxNode) {
-      fail(`methods has non-method: ${key}`, n)
+    onKeyValue(key, n) {
+      if (!transformPass) {
+        state.methods[key] = DISCOVERED
+      } else {
+        const { async, args, statement } = handleMethodKeyValue(key, n)
+        state.methods[key] = `${async ? 'async ' : ''}function ${key}${args} ${reindent(transformNode(state, statement), 0)}`
+      }
     },
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       if (transformPass) {

@@ -20,8 +20,9 @@ const $el = ref<HTMLElement | undefined>()
 const name = ref($route.query.name || 'John')
 
 onMounted(() => {
-  doIt()
-  delete this.initializing // should not become `delete initializing` (so use $this)
+  meth()
+  keyValue()
+  delete $this.initializing // should not become `delete initializing` (so use $this)
 })
 
 const watchMethod = watch((v) => {
@@ -34,8 +35,11 @@ const watchObject = watch(async (v, ov) => {
   immediate: true,
 })
 
-function doIt() {
+function meth() {
   console.log(`${props.greeting} ${name.value} ${$el.value.clientHeight}`)
+}
+async function keyValue(a) {
+  await a
 }
 </script>
 

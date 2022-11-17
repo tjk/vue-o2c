@@ -18,12 +18,16 @@ export default {
     }
   },
   methods: {
-    doIt() {
+    meth() {
       console.log(`${this.greeting} ${this.name} ${this.$el.clientHeight}`)
+    },
+    keyValue: async (a) => {
+      await a
     },
   },
   mounted() {
-    this.doIt()
+    this.meth()
+    this.keyValue()
     delete this.initializing // should not become `delete initializing` (so use $this)
   },
   watch: {
