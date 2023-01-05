@@ -15,6 +15,10 @@ export default {
     // this.initializing = true -- would make data() "complex" (need to improve)
     return {
       name: this.$route.query.name || 'John',
+      watchMethod: 0,
+      watchObject: {
+        key: 1,
+      },
     }
   },
   methods: {
@@ -31,10 +35,10 @@ export default {
     delete this.initializing // should not become `delete initializing` (so use $this)
   },
   watch: {
-    watchMethod(v) {
+    ["watchMethod"](v) {
       console.log("watchMethod", v)
     },
-    watchObject: {
+    "watchObject.key": {
       deep: true,
       immediate: true,
       async handler(v, ov) {

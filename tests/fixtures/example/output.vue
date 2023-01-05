@@ -18,6 +18,10 @@ const $this = {}
 
 const $el = ref<HTMLElement | undefined>()
 const name = ref($route.query.name || 'John')
+const watchMethod = ref(0)
+const watchObject = ref({
+  key: 1,
+})
 
 onMounted(() => {
   meth()
@@ -25,10 +29,10 @@ onMounted(() => {
   delete $this.initializing // should not become `delete initializing` (so use $this)
 })
 
-const watchMethod = watch((v) => {
+watch(() => watchMethod.value, (v) => {
   console.log("watchMethod", v)
 })
-const watchObject = watch(async (v, ov) => {
+watch(() => watchObject.value.key, async (v, ov) => {
   console.log("watchObject", v, ov)
 }, {
   deep: true,

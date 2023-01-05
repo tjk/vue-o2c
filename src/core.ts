@@ -70,7 +70,7 @@ export type State = {
   refs: Record<string, string>
   computeds: Record<string, string>
   methods: Record<string, string>
-  watchers: Record<string, WatchConfig>
+  watchers: Record<string, WatchConfig> // key is source callback body
   filters: Record<string, string>
   using: {
     $attrs?: boolean
@@ -422,7 +422,7 @@ export function transform(state: State, parser: Parser) {
   let watchersSection = ""
   for (const k in state.watchers) {
     const watcher = state.watchers[k]
-    watchersSection += `const ${k} = watch(${watcher.handler}`
+    watchersSection += `watch(() => ${k}, ${watcher.handler}`
     if (watcher.deep || watcher.immediate) {
       watchersSection += `, {\n`
       if (watcher.deep) {
@@ -697,6 +697,37 @@ function treeSelect(n: SyntaxNode, selectors: string[], onNode: OnNode) {
   })
 }
 
+function transformToken(state: State, token: string): string {
+  // XXX should warn about this usage and fix...
+  if (token === "$el") {
+    state.using.$el = true
+    return "$el.value"
+  }
+  if (["$emit", "$slots", "$attrs", "$router", "$route"].includes(token)) {
+    state.using[token] = true
+    return token
+  }
+  // TODO need to supply a config of how to get prototype -- eg:
+  // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
+  assert(!token.startsWith("$"), `config needed to determine how to replace global property: ${token}`)
+  assert(token === identifier(token), `unsafe identifier not supported: ${token}`)
+  if (state.props[token]) {
+    state.using.props = true
+    return `props.${token}`
+  }
+  if (state.computeds[token] || state.refs[token]) {
+    return `${token}.value`
+  }
+  if (state.methods[token]) {
+    return token
+  }
+  if (state.using.injects.has(token)) {
+    return `$${token}` // convention
+  }
+  state.nonRefs.add(token)
+  return `$this.${token}`
+}
+
 function transformNode(state: State, n: SyntaxNode) {
   const replacements = []
   const handleThisKey = (name: string, startIndex: number, endIndex: number, textNode: SyntaxNode) => {
@@ -712,41 +743,9 @@ function transformNode(state: State, n: SyntaxNode) {
       pushReplacement("nextTick")
       return
     }
-    // XXX should warn about this usage and fix...
-    if (name === "$el") {
-      state.using.$el = true
-      pushReplacement("$el.value")
-      return
-    }
-    if (["$emit", "$slots", "$attrs", "$router", "$route"].includes(name)) {
-      state.using[name] = true
-      pushReplacement(name)
-      return
-    }
-    // TODO need to supply a config of how to get prototype -- eg:
-    // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
-    assert(!name.startsWith("$"), `config needed to determine how to replace global property: ${name}`, textNode)
-    assert(name === identifier(name), `unsafe identifier not supported: ${name}`, textNode)
-    if (state.props[name]) {
-      state.using.props = true
-      pushReplacement(`props.${name}`)
-      return
-    } 
-    if (state.computeds[name] || state.refs[name]) {
-      pushReplacement(`${name}.value`)
-      return
-    }
-    if (state.methods[name]) {
-      pushReplacement(name)
-      return
-    }
-    if (state.using.injects.has(name)) {
-      pushReplacement(`$${name}`) // convention
-      return
-    }
-    state.nonRefs.add(name)
-    pushReplacement(`$this.${name}`)
-    return `$this.${name}`
+    // do not include nextTick in this (as it is used for watch key source transform)
+    const rep = transformToken(state, name)
+    pushReplacement(rep)
   }
   // want to preserve whitespace so i think strat should be start from text but navigate nodes and then replace
   bfs(n, (c: SyntaxNode) => {
@@ -913,7 +912,8 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
               watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformNode(state, block), 0)}`
             },
           })
-          state.watchers[key] = watch
+          const ds = key.split('.', 2)
+          state.watchers[transformToken(state, ds[0]) + (ds[1] ? `.${ds[1]}` : '')] = watch
           break
         default:
           fail(`unexpected watch value type (not method or object): ${n.type}`, n)
@@ -922,7 +922,8 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
     onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
       const watch: WatchConfig = {}
       watch.handler = `${async ? 'async ' : ''}${args.text} => ${reindent(transformNode(state, block), 0)}`
-      state.watchers[meth] = watch
+      const ds = meth.split('.', 2)
+      state.watchers[transformToken(state, ds[0]) + (ds[1] ? `.${ds[1]}` : '')] = watch
     },
   })
 }
@@ -1018,7 +1019,7 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
           handleObject(c.children[1], {
             onKeyValue(key: string, n: SyntaxNode) {
               if (transformPass) {
-                state.refs[key] = transformNode(state, n) // XXX reindent?
+                state.refs[key] = reindent(transformNode(state, n), 0)
               } else {
                 state.refs[key] = "<observed>"
               }
@@ -1107,10 +1108,17 @@ type HandleObjectHooks = {
 function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectNode
   for (const c of object.children) {
     if (c.type === "pair") {
-      assert(c.children[0]?.type === "property_identifier", `pair[0] not property_identifer: ${c.children[0].type}`, c.children[0])
+      const n = c.children[0]
+      let key
+      if (n?.type === "property_identifier") {
+        key = n.text
+      } else if (n?.type === "string") {
+        key = n.text.slice(1, -1) // XXX might have to do some harder processing
+      }
+      assert(key, `pair[0] not supported: ${c.children[0].type}`, c.children[0])
       assert(c.children[1]?.type === ":", `pair[1] not ":": ${c.children[1].type}`, c.children[1])
       assert(c.children[2], "pair has no 3nd child", c)
-      hooks.onKeyValue?.(c.children[0].text, c.children[2])
+      hooks.onKeyValue?.(key, c.children[2])
     } else if (c.type === "method_definition") {
       let meth: string | undefined
       let async = false
@@ -1121,6 +1129,13 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
           case "async":
             async = true
             break
+          case "computed_property_name":
+            // eg. ["test"]() {}
+            if (n.children[0]?.type === "[" && n.children[2]?.type === "]" && n.children[1]?.type === "string") {
+              meth = n.text.slice(2, -2)
+              break
+            }
+            fail(`unhandled method_definition structure, found: ${n.type}`, n)
           case "property_identifier":
             meth = n.text
             break
