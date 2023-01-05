@@ -76,22 +76,30 @@ export default {
     // this.initializing = true -- would make data() "complex" (need to improve)
     return {
       name: this.$route.query.name || 'John',
-    };
+      watchMethod: 0,
+      watchObject: {
+        key: 1,
+      },
+    }
   },
   methods: {
-    doIt() {
-      console.log(\`\${this.greeting} \${this.name} \${this.$el.clientHeight}\`);
+    meth() {
+      console.log(\`\${this.greeting} \${this.name} \${this.$el.clientHeight}\`)
+    },
+    keyValue: async (a) => {
+      await a
     },
   },
   mounted() {
-    this.doIt();
+    this.meth()
+    this.keyValue()
     delete this.initializing // should not become \`delete initializing\` (so use $this)
   },
   watch: {
-    watchMethod(v) {
+    ["watchMethod"](v) {
       console.log("watchMethod", v)
     },
-    watchObject: {
+    "watchObject.key": {
       deep: true,
       immediate: true,
       async handler(v, ov) {
@@ -99,7 +107,7 @@ export default {
       },
     },
   },
-};
+}
 %end-script%
 
 <style scoped>
