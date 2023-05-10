@@ -3,13 +3,15 @@
   "version": "0.1.19",
   "description": "Vue Options API to Composition API converter",
   "type": "module",
-  "main": "dist/index.js",
-  "bin": "dist/cli.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "bin": "dist/cli.cjs",
   "types": "dist/index.d.ts",
   "files": [
     "/dist"
   ],
   "scripts": {
+    "new-build": "rm -rf dist && tsup src/index.ts src/cli.ts --format cjs,esm --dts",
     "build": "tsc && chmod +x dist/cli.js && pnpm run build:browser",
     "build:browser": "esbuild --bundle --minify --format=esm --platform=browser src/core.ts --outfile=dist/browser.js",
     "prepublishOnly": "pnpm run test && pnpm run build",
@@ -26,6 +28,7 @@
     "picocolors": "^1.0.0",
     "release-it": "^15.5.0",
     "tree-sitter-cli": "^0.20.7",
+    "tsup": "^6.7.0",
     "tsx": "^3.10.4",
     "typescript": "^4.8.4",
     "web-tree-sitter": "^0.20.7"

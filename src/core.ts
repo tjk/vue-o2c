@@ -1,13 +1,17 @@
 import type { SyntaxNode, Tree } from "tree-sitter"
 import { identifier } from "safe-identifier"
 
-function fail(msg: string, n?: SyntaxNode) {
+function fail(msg: string, n?: SyntaxNode): never {
   // TODO need class or something along state so we can add scriptStartIdx to row value
   throw new Error(`${msg}${n ? ` @ (${n.startPosition.row + 1}, ${n.startPosition.column + 1})` : ""}`)
 }
 
+// https://stackoverflow.com/a/73561238/387413
+type Falsy = null | undefined | false | 0 | -0 | 0n | ''
+type Truthy<T> = T extends Falsy ? never : T
+
 // don't use stdlib so can be used in browser env
-function assert(v: any, msg: string, n?: SyntaxNode) {
+function assert<T>(v: T, msg: string, n?: SyntaxNode): asserts v is Truthy<T> {
   if (!v) {
     fail(`assertion failed: ${msg}`, n)
   }
@@ -169,6 +173,9 @@ export function transform(state: State, parser: Parser) {
   } = state.scan
 
   assert(script, "no options api script scanned")
+  if (!lines) {
+    throw new Error("no lines scanned")
+  }
   const tree = state.tree = parser.parse(script)
 
   let singleQuotes = 0
@@ -379,7 +386,7 @@ export function transform(state: State, parser: Parser) {
         }
         assert(zeroIndentIdx != null, "no zero-space indent found in pug template")
         // can be .some-class, #some-id, div
-        const zeroIndentLine = templateLines[zeroIndentIdx]
+        const zeroIndentLine = templateLines[zeroIndentIdx!]
         // html tag should just be all lower case
         if (zeroIndentLine.startsWith(".") || zeroIndentLine.startsWith("#") || zeroIndentLine.match(/^[a-z]+([.#(\s]|$)/)) {
           let newLine: string
@@ -399,7 +406,7 @@ export function transform(state: State, parser: Parser) {
               newLine = zeroIndentLine + `(ref="$el")`
             }
           }
-          templateLines[zeroIndentIdx] = newLine
+          templateLines[zeroIndentIdx!] = newLine
           template = templateLines.join("\n")
         } else {
           fail("cannot edit pug template to suport $el")
@@ -449,7 +456,7 @@ export function transform(state: State, parser: Parser) {
         fail("cannot find template to rewrite filters")
       }
     }
-    template = template.replace(/{{.*}}/g, match => {
+    template = template!.replace(/{{.*}}/g, match => {
       // XXX preserve whether like {{ spaced }} or {{tight}}
       let spacing = ""
       if (match[2] === " ") {
@@ -507,7 +514,13 @@ export function transform(state: State, parser: Parser) {
 
   // this can be simplified...
   let transformed = ""
+  if (scriptEndIdx == null) {
+    throw new Error("script end index not found")
+  }
   if (template) {
+    if (templateStartIdx == null || scriptStartIdx == null) {
+      throw new Error("template or script indices not found")
+    }
     if (templateStartIdx < scriptStartIdx) {
       transformed += lines.slice(0, templateStartIdx + 1).join("\n")
       transformed += `\n${template}\n`
@@ -675,7 +688,7 @@ type OnNode = (n: SyntaxNode) => void | false
 function bfs(n: SyntaxNode, onNode: OnNode) {
   const q = [n]
   while (q.length) {
-    const c = q.shift()
+    const c = q.shift()!
     const ret = onNode(c)
     if (ret !== false) {
       q.push(...c.children)
@@ -704,7 +717,7 @@ function transformToken(state: State, token: string): string {
     return "$el.value"
   }
   if (["$emit", "$slots", "$attrs", "$router", "$route"].includes(token)) {
-    state.using[token] = true
+    (state.using as any)[token] = true // XXX fix ts
     return token
   }
   // TODO need to supply a config of how to get prototype -- eg:
@@ -729,7 +742,11 @@ function transformToken(state: State, token: string): string {
 }
 
 function transformNode(state: State, n: SyntaxNode) {
-  const replacements = []
+  const replacements: {
+    startIndex: number,
+    endIndex: number,
+    value: string,
+  }[] = []
   const handleThisKey = (name: string, startIndex: number, endIndex: number, textNode: SyntaxNode) => {
     const pushReplacement = (value: string) => {
       replacements.push({
@@ -762,7 +779,7 @@ function transformNode(state: State, n: SyntaxNode) {
         assert(c2.type === "property_identifier", "expected property_identifier after `this.`")
         member = c2.text
         handleThisKey(member, c.startIndex, c2.endIndex, c2)
-      } else if (c1?.type === "[" && c2.type === "string" && c3?.type === "]") {
+      } else if (c1?.type === "[" && c2?.type === "string" && c3?.type === "]") {
         // 1: [
         // 2: ' OR "
         // 3: <key>
@@ -771,12 +788,12 @@ function transformNode(state: State, n: SyntaxNode) {
         member = c2.text.slice(1, c2.text.length - 1)
         handleThisKey(member, c.startIndex, c3.endIndex, c2)
       } else {
-        fail("unsupported this attribute while transforming", c.parent)
+        fail("unsupported this attribute while transforming", c.parent || undefined)
       }
       // collect first arg of this.$emit as well for using.emits
       if (member === "$emit") {
         let foundEmit = false
-        let n = c
+        let n: SyntaxNode | null = c
         // look up the tree until call_expression
         while (n) {
           if (n.type === "call_expression") {
@@ -1150,7 +1167,7 @@ function handleObject(object: SyntaxNode, hooks: HandleObjectHooks) { // ObjectN
         }
       }
       assert(meth && args && block, "did not find required nodes for method_definition", c) 
-      hooks.onMethod?.(meth, async, args, block)
+      hooks.onMethod?.(meth!, async, args!, block!) // fix ts
     } else if (c.type === "comment") {
       // TODO preserve these -- onComment
     } else if (c.type === "{" || c.type === "," || c.type === "}") {

@@ -1,10 +1,11 @@
 {
   "compilerOptions": {
-    "declaration": true,
+    "target": "es2016",
+    "module": "commonjs",
     "esModuleInterop": true,
-    "moduleResolution": "node",
-    "outDir": "dist",
-    "target": "es6"
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src", "pkg.d.ts"]
 }
