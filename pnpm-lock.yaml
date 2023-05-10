@@ -1,6 +1,7 @@
 lockfileVersion: 5.4
 
 specifiers:
+  '@types/diff': ^5.0.3
   '@types/node': ^18.11.3
   diff: ^5.1.0
   esbuild: ^0.15.12
@@ -23,6 +24,7 @@ dependencies:
   tree-sitter-typescript: 0.20.1
 
 devDependencies:
+  '@types/diff': 5.0.3
   '@types/node': 18.11.3
   diff: 5.1.0
   esbuild: 0.15.12
@@ -509,6 +511,10 @@ packages:
   /@tootallnate/once/1.1.2:
     resolution: {integrity: sha512-RbzJvlNzmRq5c3O09UipeuXno4tA1FE6ikOjxZK0tuxVv3412l64l5t1W5pj4+rJq9vpkm/kwiR07aZXnsKPxw==}
     engines: {node: '>= 6'}
+    dev: true
+
+  /@types/diff/5.0.3:
+    resolution: {integrity: sha512-amrLbRqTU9bXMCc6uX0sWpxsQzRIo9z6MJPkH1pkez/qOxuqSZVuryJAWoBRq94CeG8JxY+VK4Le9HtjQR5T9A==}
     dev: true
 
   /@types/http-cache-semantics/4.0.1:

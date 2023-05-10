@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "rootDir": "..",
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "module": "esnext",
+    "target": "es6",
+    "strict": true,
+    "noEmit": true,
+  },
+  "include": ["../tests", "../src"]
+}

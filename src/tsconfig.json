@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "rootDir": "..",
     "target": "es2016",
     "module": "commonjs",
     "esModuleInterop": true,
@@ -7,5 +8,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "pkg.d.ts"]
+  "include": ["../src", "../pkg.d.ts"]
 }

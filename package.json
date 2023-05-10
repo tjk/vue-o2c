@@ -15,12 +15,13 @@
     "build:browser": "esbuild --bundle --minify --format=esm --platform=browser src/core.ts --outfile=dist/browser.js",
     "prepublishOnly": "pnpm run test && pnpm run build",
     "update:readme": "tsx scripts/updateReadme.ts",
-    "test": "tsx tests/index.ts"
+    "test": "tsx --tsconfig tests/tsconfig.json tests/index.ts"
   },
   "keywords": [],
   "author": "TJ Koblentz",
   "license": "MIT",
   "devDependencies": {
+    "@types/diff": "^5.0.3",
     "@types/node": "^18.11.3",
     "diff": "^5.1.0",
     "esbuild": "^0.15.12",

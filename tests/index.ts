@@ -2,7 +2,7 @@ import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { diffLines } from "diff"
-import pc from "picocolors"
+import { default as pc } from "picocolors"
 import { transformPath } from "../src/index"
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,7 +16,7 @@ function printDiff(from: string, to: string) {
     let printNewline = true
     if (md) {
       if (md.index) {
-        process.stderr.write(pc[color](part.value.substring(0, md.index)))
+        process.stderr.write((pc as any)[color](part.value.substring(0, md.index)))
       }
       if (md[1].length && (color === "green" || color === "red")) {
         printNewline = false
@@ -31,10 +31,10 @@ function printDiff(from: string, to: string) {
           // \n\n\n will write 4 newlines (with first one not colored)!?!?!?
           str.split("").forEach((s: string) => {
             if (s === "\n") {
-              process.stderr.write(pc[color]("\\n"))
+              process.stderr.write((pc as any)[color]("\\n"))
               process.stderr.write("\n")
             } else {
-              process.stderr.write(pc[color](s))
+              process.stderr.write((pc as any)[color](s))
             }
           })
         }
@@ -87,7 +87,7 @@ function main(str?: string) {
       try {
         transformPath(inputPath)
       } catch (e) {
-        errorStack = e.stack
+        errorStack = (e as any).stack
       }
       if (errorStack !== expected) {
         console.log()
