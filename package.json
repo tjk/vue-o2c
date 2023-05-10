@@ -10,8 +10,8 @@
     "/dist"
   ],
   "scripts": {
-    "new-build": "rm -rf dist && tsup src/index.ts src/cli.ts --format cjs,esm --dts",
-    "build": "tsc && chmod +x dist/cli.js && pnpm run build:browser",
+    "build-tsup": "rm -rf dist && tsup src/index.ts src/cli.ts --format cjs,esm --dts",
+    "build": "pnpm run build-tsup && chmod +x dist/cli.js && pnpm run build:browser",
     "build:browser": "esbuild --bundle --minify --format=esm --platform=browser src/core.ts --outfile=dist/browser.js",
     "prepublishOnly": "pnpm run test && pnpm run build",
     "update:readme": "tsx scripts/updateReadme.ts",
