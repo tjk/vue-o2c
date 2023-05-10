@@ -2,10 +2,9 @@
   "name": "vue-o2c",
   "version": "0.1.19",
   "description": "Vue Options API to Composition API converter",
-  "type": "module",
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "bin": "dist/cli.cjs",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "bin": "dist/cli.js",
   "types": "dist/index.d.ts",
   "files": [
     "/dist"
