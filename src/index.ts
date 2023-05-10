@@ -1,7 +1,7 @@
 import fs from "fs"
 import Parser from "tree-sitter"
 import javascript from "tree-sitter-javascript"
-import typescript from "tree-sitter-typescript"
+import { typescript } from "tree-sitter-typescript"
 import { scan, transform as _transform, type State } from "./core"
 
 export function transformPath(sfcPath: string): State {
