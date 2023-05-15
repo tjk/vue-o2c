@@ -76,6 +76,7 @@ export type State = {
   methods: Record<string, string>
   watchers: Record<string, WatchConfig> // key is source callback body
   filters: Record<string, string>
+  directives: Record<string, string>
   using: {
     $attrs?: boolean
     $el?: boolean
@@ -117,6 +118,7 @@ export function scan(sfc: string): State {
     methods: {},
     watchers: {},
     filters: {},
+    directives: {},
   }
   const { scan } = state
 
@@ -483,6 +485,11 @@ export function transform(state: State, parser: Parser) {
     methodsSection += `${state.filters[k]}${state.semi}\n`
   }
 
+  let directivesSection = ""
+  for (const k in state.directives) {
+    directivesSection += `const v${k[0].toUpperCase() + k.slice(1)} = ${state.directives[k]}${state.semi}\n`
+  }
+
   // XXX sort provides alphabetically
   let providesSection = ""
   for (const k of state.using.provides) {
@@ -507,6 +514,7 @@ export function transform(state: State, parser: Parser) {
     computedsSection,
     watchersSection,
     methodsSection,
+    directivesSection,
     providesSection,
   ].filter(Boolean)
 
@@ -945,6 +953,25 @@ function handleWatchers(state: State, n: SyntaxNode, transformPass = true) {
   })
 }
 
+function handleDirectives(state: State, n: SyntaxNode, transformPass = true) {
+  if (!transformPass) {
+    // cannot refer to directives so need to discover them
+    return
+  }
+  // directives: {
+  //   a: someDirective, // -> vA
+  //   b: { created, ... } // -> vB
+  // }
+  handleObject(n, {
+    onKeyValue(key, n) {
+      state.directives[key] = reindent(transformNode(state, n), 0)
+    },
+    onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
+      assert(false, "expected only key-value directives object", n)
+    },
+  })
+}
+
 function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, transformPass = true) {
   switch (key) {
     case "components":
@@ -952,6 +979,9 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       break
     case "computed":
       handleComputeds(state, n, transformPass)
+      break
+    case "directives":
+      handleDirectives(state, n, transformPass)
       break
     case "emits":
       assert(n.type === "array", "expected emits to be an array", n)
