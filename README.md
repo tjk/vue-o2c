@@ -12,6 +12,16 @@
 - $el needs to try to rewrite part of template
 - would like to maintain indentation
 
+**After running, check for FIXME comments**
+
+Composition API does not allow easy access of `app.config.globalProperties` like options API does.
+vue-o2c takes care of some basic cases (eg. `this.$router` assuming vue-router) but for others, you will
+see comments like the following and you must adjust the code depending on how you provide these systems.
+
+```typescript
+const $primevue = inject("primevue") /* FIXME vue-o2c */
+```
+
 ## Usage
 
 ### via CLI
