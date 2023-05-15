@@ -4,5 +4,5 @@
     "esModuleInterop": true,
     "noEmit": true,
   },
-  "include": ["tests", "src", "pkg.d.ts"]
+  "include": ["tests/index.ts", "src", "pkg.d.ts"]
 }
