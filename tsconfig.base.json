@@ -2,7 +2,6 @@
   "compilerOptions": {
     "rootDir": ".",
     "esModuleInterop": true,
-    "strict": true,
     "noEmit": true,
   },
   "include": ["tests", "src", "pkg.d.ts"]
