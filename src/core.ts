@@ -720,7 +720,7 @@ function treeSelect(n: SyntaxNode, selectors: string[], onNode: OnNode) {
   })
 }
 
-function transformToken(state: State, token: string, token2?: string): string {
+function transformToken(state: State, token: string): string {
   // XXX should warn about this usage and fix...
   if (token === "$el") {
     state.using.$el = true
@@ -731,10 +731,11 @@ function transformToken(state: State, token: string, token2?: string): string {
     return token
   }
   // this.$refs.display -> display.value and add display to state.refs
-  // XXX would like to type them correctly based on the template...
-  if (token.match(/\$refs[\.\[]/)) {
-    state.refs[token2] = "" // default to undefined (), but TODO would like to type template refs better!
-    return `${token2}.value` // TODO need to support this.$refs['a-not-safe-ident'] (use something like $this ??)
+  // TODO need to support this.$refs['a-not-safe-ident'] (use something like $this ??)
+  if (token.match(/\$refs\./)) {
+    const name = token.slice("$refs.".length)
+    state.refs[name] = "" // default to undefined (), but TODO would like to type template refs better!
+    return `${name}.value`
   }
   if (token.startsWith("$")) {
     // TODO need to supply a config of how to get prototype -- eg:

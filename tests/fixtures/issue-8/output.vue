@@ -36,7 +36,7 @@ const $primevue = inject('primevue') /* FIXME vue-o2c */;
 const $emit = defineEmits(['open', 'close', 'update:active']);
 
 const d_active = ref(props.active);
-const undefined = ref();
+const display = ref();
 
 const containerClass = computed(() => {
     return ['p-inplace p-component', { 'p-inplace-closable': props.closable }];
@@ -66,7 +66,7 @@ function close(event) {
     d_active.value = false;
     $emit('update:active', false);
     setTimeout(() => {
-        undefined.value.focus();
+        display.value.focus();
     }, 0);
 };
 
