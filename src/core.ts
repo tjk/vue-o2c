@@ -88,7 +88,7 @@ export type State = {
     props?: boolean
     emits: Set<string>
     provides: Set<string>
-    injects: Set<string>
+    injects: Record<string, {str: string, warn?: boolean}>
   }
   nonRefs: Set<string>
   transformed?: string
@@ -112,7 +112,7 @@ export function scan(sfc: string): State {
     using: {
       emits: new Set(),
       provides: new Set(),
-      injects: new Set(),
+      injects: {},
     },
     nonRefs: new Set(),
     methods: {},
@@ -225,7 +225,7 @@ export function transform(state: State, parser: Parser) {
   if (Object.keys(state.computeds).length) {
     vueImportsUsed.add("computed")
   }
-  if (state.using.injects.size) {
+  if (Object.keys(state.using.injects).length) {
     vueImportsUsed.add("inject")
   }
   if (state.using.nextTick) {
@@ -346,8 +346,10 @@ export function transform(state: State, parser: Parser) {
   if (state.nonRefs.size) {
     injectionsSection += `const $this = {}\n`
   }
-  for (const inj of state.using.injects) {
-    injectionsSection += `const $${inj} = inject(${state.quote}${inj}${state.quote})${state.semi}\n`
+  for (const k in state.using.injects) {
+    const v = state.using.injects[k]
+    const warn = v.warn ? ` /* FIXME vue-o2c */` : ""
+    injectionsSection += `const $${k} = inject(${state.quote}${v.str}${state.quote})${warn}${state.semi}\n`
   }
 
   let emitsSection = ""
@@ -718,7 +720,7 @@ function treeSelect(n: SyntaxNode, selectors: string[], onNode: OnNode) {
   })
 }
 
-function transformToken(state: State, token: string): string {
+function transformToken(state: State, token: string, token2?: string): string {
   // XXX should warn about this usage and fix...
   if (token === "$el") {
     state.using.$el = true
@@ -728,8 +730,20 @@ function transformToken(state: State, token: string): string {
     (state.using as any)[token] = true // XXX fix ts
     return token
   }
-  // TODO need to supply a config of how to get prototype -- eg:
-  // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
+  // this.$refs.display -> display.value and add display to state.refs
+  // XXX would like to type them correctly based on the template...
+  if (token.match(/\$refs[\.\[]/)) {
+    state.refs[token2] = "" // default to undefined (), but TODO would like to type template refs better!
+    return `${token2}.value` // TODO need to support this.$refs['a-not-safe-ident'] (use something like $this ??)
+  }
+  if (token.startsWith("$")) {
+    // TODO need to supply a config of how to get prototype -- eg:
+    // this.$sentry -> {$sentry: 'inject("$sentry")'}, etc.
+    // XXX warn while transforming?
+    const v = token.slice(1)
+    state.using.injects[v] = {str: v, warn: true}
+    return token
+  }
   assert(!token.startsWith("$"), `config needed to determine how to replace global property: ${token}`)
   assert(token === identifier(token), `unsafe identifier not supported: ${token}`)
   if (state.props[token]) {
@@ -742,11 +756,27 @@ function transformToken(state: State, token: string): string {
   if (state.methods[token]) {
     return token
   }
-  if (state.using.injects.has(token)) {
+  if (state.using.injects[token]) {
     return `$${token}` // convention
   }
   state.nonRefs.add(token)
   return `$this.${token}`
+}
+
+function getMember(c: SyntaxNode): string | undefined {
+  if (c.type === "member_expression") {
+    const c1 = c.children[1]
+    const c2 = c.children[2]
+    assert(c1.type === "." && c2.type === "property_identifier", "expected simple member expression", c)
+    return c.children[2].text
+  }
+  if (c.type === "subscript_expression") {
+    const c1 = c.children[1]
+    const c2 = c.children[2]
+    const c3 = c.children[3]
+    assert(c1.type === "[" && c2.type === "string" && c3.type === "]", "expected simple subscript expression", c)
+    return c2.text.slice(1, c2.text.length - 1)
+  }
 }
 
 function transformNode(state: State, n: SyntaxNode) {
@@ -755,7 +785,7 @@ function transformNode(state: State, n: SyntaxNode) {
     endIndex: number,
     value: string,
   }[] = []
-  const handleThisKey = (name: string, startIndex: number, endIndex: number, textNode: SyntaxNode) => {
+  const handleThisKey = (name: string, startIndex: number, endIndex: number) => {
     const pushReplacement = (value: string) => {
       replacements.push({
         startIndex: startIndex - n.startIndex,
@@ -775,31 +805,20 @@ function transformNode(state: State, n: SyntaxNode) {
   // want to preserve whitespace so i think strat should be start from text but navigate nodes and then replace
   bfs(n, (c: SyntaxNode) => {
     if (c.type === "this") {
-      // look at the next nodes
-      // 0: this
-      const c1 = c.nextSibling
-      const c2 = c1?.nextSibling
-      const c3 = c2?.nextSibling
-      let member
-      if (c1?.type === ".") {
-        // this.<key>
-        assert(c2, "expected sibling after this.", c1)
-        assert(c2.type === "property_identifier", "expected property_identifier after `this.`")
-        member = c2.text
-        handleThisKey(member, c.startIndex, c2.endIndex, c2)
-      } else if (c1?.type === "[" && c2?.type === "string" && c3?.type === "]") {
-        // 1: [
-        // 2: ' OR "
-        // 3: <key>
-        // 4: ' OR "
-        // 5: ]
-        member = c2.text.slice(1, c2.text.length - 1)
-        handleThisKey(member, c.startIndex, c3.endIndex, c2)
-      } else {
-        fail("unsupported this attribute while transforming", c.parent || undefined)
+      const p1 = c.parent
+      const m1 = getMember(p1)
+      if (m1 === "$refs") {
+        const p2 = p1.parent
+        assert(p2.type === "member_expression", "expected this.$refs parent to be member expression", c)
+        const m2 = getMember(p2)
+        // because next line does $refs. and don't have $this style solution for $refs yet
+        assert(m2 === identifier(m2), "template ref does not have safe identifier", p2)
+        handleThisKey(`$refs.${m2}`, p2.startIndex, p2.endIndex)
+      } else if (m1) {
+        handleThisKey(m1, p1.startIndex, p1.endIndex)
       }
-      // collect first arg of this.$emit as well for using.emits
-      if (member === "$emit") {
+      if (m1 === "$emit") {
+        // collect first arg of this.$emit as well for using.emits
         let foundEmit = false
         let n: SyntaxNode | null = c
         // look up the tree until call_expression
@@ -1014,7 +1033,8 @@ function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, t
       if (n.type === "array") {
         handleArray(n, c => {
           assert(c.type === "string", "expected inject to be array of simple strings", c)
-          state.using.injects.add(c.text.slice(1, c.text.length - 1))
+          const v = c.text.slice(1, c.text.length - 1)
+          state.using.injects[v] = {str: v}
         })
       } else if (n.type === "object") {
         fail("inject object not supported yet")
@@ -1065,10 +1085,10 @@ function handleDataMethod(state: State, n: SyntaxNode, transformPass = true) {
           // const a = ref("hi")
           handleObject(c.children[1], {
             onKeyValue(key: string, n: SyntaxNode) {
-              if (transformPass) {
-                state.refs[key] = reindent(transformNode(state, n), 0)
+              if (!transformPass) {
+                state.refs[key] = DISCOVERED
               } else {
-                state.refs[key] = "<observed>"
+                state.refs[key] = reindent(transformNode(state, n), 0)
               }
             },
             onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
