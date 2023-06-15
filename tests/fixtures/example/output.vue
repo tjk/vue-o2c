@@ -7,12 +7,16 @@ div(ref="$el")
 import { onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 
+const greetingDefault = "Hello"
+
+const somethingBelow = 42
+
 const props = withDefaults(defineProps<{
   greeting?: string
   loading: boolean
   requiredFalse?: string
 }>(), {
-  greeting: "Hello",
+  greeting: greetingDefault,
 })
 
 const $route = useRoute()

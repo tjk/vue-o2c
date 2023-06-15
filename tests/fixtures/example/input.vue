@@ -4,11 +4,13 @@ div
 </template>
 
 <script>
+const greetingDefault = "Hello"
+
 export default {
   props: {
     greeting: {
       type: String,
-      default: "Hello",
+      default: greetingDefault,
     },
     loading: {
       type: Boolean,
@@ -55,6 +57,8 @@ export default {
     },
   },
 }
+
+const somethingBelow = 42
 </script>
 
 <style scoped>

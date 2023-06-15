@@ -1,0 +1,5 @@
+{
+  "hooks": {
+    "before:git:release": "sed 's;vue-o2c@[^/]+;vue-o2c@${version}' docs/index.html && exit 1"
+  }
+}
