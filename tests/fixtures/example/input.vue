@@ -10,6 +10,14 @@ export default {
       type: String,
       default: "Hello",
     },
+    loading: {
+      type: Boolean,
+      required: true,
+    },
+    requiredFalse: {
+      type: String,
+      required: false,
+    },
   },
   data() {
     // this.initializing = true -- would make data() "complex" (need to improve)

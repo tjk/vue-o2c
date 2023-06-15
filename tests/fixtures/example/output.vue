@@ -9,6 +9,8 @@ import { useRoute } from "vue-router"
 
 const props = withDefaults(defineProps<{
   greeting?: string
+  loading: boolean
+  requiredFalse?: string
 }>(), {
   greeting: "Hello",
 })

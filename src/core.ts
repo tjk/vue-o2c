@@ -69,7 +69,7 @@ export type State = {
     destroyed?: string
     errorCaptured?: string
   }
-  props: Record<string, string>
+  props: Record<string, {required?: true, type: string}>
   propDefaultNodes: Record<string, string>
   refs: Record<string, string>
   computeds: Record<string, string>
@@ -316,8 +316,7 @@ export function transform(state: State, parser: Parser) {
     }
     propsSection += `defineProps<{\n`
     for (const k in state.props) {
-      // TODO maybe not optional prop required attribute right?
-      propsSection += `  ${k}?: ${state.props[k]}\n`
+      propsSection += `  ${k}${state.props[k].required ? '' : '?'}: ${state.props[k].type}\n`
     }
     propsSection += `}>()`
     if (Object.keys(state.propDefaultNodes).length) {
@@ -648,7 +647,7 @@ function handlePropType(n?: SyntaxNode): string {
 function handleProps(state: State, s: SyntaxNode, transformPass = true) { // ObjectNode or ArrayNode
   if (s.type === 'array') {
     handleArray(s, (n: SyntaxNode) => {
-        state.props[n.text] = 'any';
+        state.props[n.text] = {type: 'any'};
     })
     return;
   }
@@ -657,13 +656,15 @@ function handleProps(state: State, s: SyntaxNode, transformPass = true) { // Obj
       switch (n.type) {
         case "identifier":
           // same as { type: ____ } value
-          state.props[propName] = handlePropType(n)
+          state.props[propName] = {type: handlePropType(n)}
           break
         case "object":
           if (n.text === "{}") {
-            state.props[propName] = "any" // TODO tag to be fixed
+            state.props[propName] = {type: "any"} // TODO tag to be fixed
             break
           }
+          let propType: string | undefined
+          let propRequired: true | undefined = undefined
           handleObject(n, {
             onKeyValue(key: string, n: SyntaxNode) {
               switch (key) {
@@ -671,7 +672,16 @@ function handleProps(state: State, s: SyntaxNode, transformPass = true) { // Obj
                   state.propDefaultNodes[propName] = n.text
                   break
                 case "type":
-                  state.props[propName] = handlePropType(n) // TODO do not assume this node is identifier
+                  propType = handlePropType(n) // TODO do not assume this node is identifier
+                  break
+                case "required":
+                  if (n.text === "true") {
+                    propRequired = true
+                  } else if (n.text === "false") {
+                    // do nothing, optional by default
+                  } else {
+                    fail(`prop attribute required not true or false: ${n.text}`, n)
+                  }
                   break
                 default:
                   fail(`prop attribute not handled: ${key}`, n)
@@ -683,6 +693,9 @@ function handleProps(state: State, s: SyntaxNode, transformPass = true) { // Obj
               state.propDefaultNodes[propName] = `() => ${reindent(block.text, 2)}`
             },
           })
+          if (propType) {
+            state.props[propName] = {type: propType, required: propRequired}
+          }
           break
         default:
           fail(`prop value not identifier or object: ${n.children[2].type}`, n.children[2])
