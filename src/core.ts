@@ -56,7 +56,8 @@ export type State = {
   semi: string
   quote: string
   // parse
-  extraScript: string
+  scriptPre: string
+  scriptPost: string
   importNodes: SyntaxNode[]
   hooks: { // XXX what should be under `using` vs not?
     beforeCreate?: string
@@ -96,7 +97,8 @@ export type State = {
 
 export function scan(sfc: string): State {
   const state: State = {
-    extraScript: "",
+    scriptPre: "",
+    scriptPost: "",
     scan: {},
     config: {},
     // memo
@@ -209,15 +211,22 @@ export function transform(state: State, parser: Parser) {
     state.semi = ";"
   }
 
+  let scriptPre = true
   for (const n of tree.rootNode.children) {
     if (n.type === "import_statement") {
       state.importNodes.push(n)
-    } else if (n.type === "export_statement") {
+      continue
+    }
+    if (n.type === "export_statement") {
       if (maybeHandleDefaultExport(state, n)) {
+        scriptPre = false
         continue
       }
+    }
+    if (scriptPre) {
+      state.scriptPre += `${n.text}\n`
     } else {
-      state.extraScript += `${n.text}\n`
+      state.scriptPost += `${n.text}\n`
     }
   }
 
@@ -499,6 +508,7 @@ export function transform(state: State, parser: Parser) {
 
   const scriptSections = [
     importSection,
+    state.scriptPre,
     propsSection,
     injectionsSection,
     emitsSection,
@@ -517,9 +527,10 @@ export function transform(state: State, parser: Parser) {
     methodsSection,
     directivesSection,
     providesSection,
+    state.scriptPost,
   ].filter(Boolean)
 
-  const newScript = scriptSections.join("\n") + state.extraScript
+  const newScript = scriptSections.join("\n")
 
   // this can be simplified...
   let transformed = ""
@@ -1174,7 +1185,6 @@ function handleDefaultExportMethod(state: State, meth: string, async: boolean, a
       break
     case "provide":
       fail("provide() not supported yet")
-      break
     default:
       // TODO other hooks destroyed, etc.
       fail(`export default key method not supported: ${meth}`, block) // XXX wrong syntax node

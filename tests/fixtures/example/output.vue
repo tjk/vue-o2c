@@ -9,8 +9,6 @@ import { useRoute } from "vue-router"
 
 const greetingDefault = "Hello"
 
-const somethingBelow = 42
-
 const props = withDefaults(defineProps<{
   greeting?: string
   loading: boolean
@@ -51,6 +49,8 @@ function meth() {
 async function keyValue(a) {
   await a
 }
+
+const somethingBelow = 42
 </script>
 
 <style scoped>
