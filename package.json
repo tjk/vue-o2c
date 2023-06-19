@@ -1,6 +1,6 @@
 {
   "name": "vue-o2c",
-  "version": "0.1.22",
+  "version": "0.1.25",
   "description": "Vue Options API to Composition API converter",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
