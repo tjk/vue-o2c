@@ -1,5 +1,5 @@
 {
   "hooks": {
-    "before:git:release": "sed -i '' 's;vue-o2c@[0-9.]*;vue-o2c@${version};' docs/index.html"
+    "before:git:release": "sed -i '' 's;vue-o2c@[0-9.]*;vue-o2c@${version};' docs/index.html && git add docs/index.html"
   }
 }
