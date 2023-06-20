@@ -1,12 +1,23 @@
 <template lang="pug">
 div
   p Wonderful
+  RewrittenComponentName(prop="value")
 </template>
 
 <script>
+import SomeComponent from "@components/SomeComponent.vue"
+
 const greetingDefault = "Hello"
 
 export default {
+  components: {
+    RewrittenComponentName: SomeComponent,
+    InlineComponent: {
+      render() {
+        // return h('div', 'inline component')
+      },
+    }
+  },
   props: {
     greeting: {
       type: String,

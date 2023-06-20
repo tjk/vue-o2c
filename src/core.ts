@@ -70,6 +70,7 @@ export type State = {
     destroyed?: string
     errorCaptured?: string
   }
+  components: Record<string, string>
   props: Record<string, {required?: true, type: string}>
   propDefaultNodes: Record<string, string>
   refs: Record<string, string>
@@ -107,6 +108,7 @@ export function scan(sfc: string): State {
     // ---
     importNodes: [],
     hooks: {},
+    components: {},
     props: {},
     propDefaultNodes: {},
     refs: {},
@@ -315,6 +317,11 @@ export function transform(state: State, parser: Parser) {
     importSection = importString(state, "vue", vueImportsUsed) + importSection
   }
 
+  let componentsSection = ""
+  for (const k in state.components) {
+    componentsSection += `const ${k} = ${state.components[k]}${state.semi}\n`
+  }
+
   let propsSection = ""
   if (Object.keys(state.props).length) {
     if (state.using.props) {
@@ -509,6 +516,7 @@ export function transform(state: State, parser: Parser) {
   const scriptSections = [
     importSection,
     state.scriptPre,
+    componentsSection,
     propsSection,
     injectionsSection,
     emitsSection,
@@ -1016,10 +1024,26 @@ function handleDirectives(state: State, n: SyntaxNode, transformPass = true) {
   })
 }
 
+function handleComponents(state: State, n: SyntaxNode, transformPass = true) {
+  if (transformPass) {
+    // nothing to transform
+    return
+  }
+  handleObject(n, {
+    onKeyValue(key, n) {
+      state.components[key] = reindent(n.text, 0)
+    },
+    onMethod(meth: string, async: boolean, args: SyntaxNode, block: SyntaxNode) {
+      assert(false, "expected only key-value components object", n)
+    },
+  })
+}
+
 function handleDefaultExportKeyValue(state: State, key: string, n: SyntaxNode, transformPass = true) {
   switch (key) {
     case "components":
       // we don't need this now! but we should do better and remove/rewrite imports to use components.d.ts
+      handleComponents(state, n, transformPass)
       break
     case "computed":
       handleComputeds(state, n, transformPass)

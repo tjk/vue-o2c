@@ -15,6 +15,8 @@ import { computed, inject, ref, watch } from 'vue';
 import Button from 'primevue/button';
 import FocusTrap from 'primevue/focustrap';
 
+const IPButton = Button;
+
 const props = withDefaults(defineProps<{
   closable?: boolean
   active?: boolean

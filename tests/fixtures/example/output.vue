@@ -1,13 +1,22 @@
 <template lang="pug">
 div(ref="$el")
   p Wonderful
+  RewrittenComponentName(prop="value")
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
+import SomeComponent from "@components/SomeComponent.vue"
 
 const greetingDefault = "Hello"
+
+const RewrittenComponentName = SomeComponent
+const InlineComponent = {
+  render() {
+    // return h('div', 'inline component')
+  },
+}
 
 const props = withDefaults(defineProps<{
   greeting?: string
